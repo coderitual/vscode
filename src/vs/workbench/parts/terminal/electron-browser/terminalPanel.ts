@@ -26,6 +26,7 @@ import { TPromise } from 'vs/base/common/winjs.base';
 export class TerminalPanel extends Panel {
 
 	private _actions: IAction[];
+	private _copyContextMenuAction: IAction;
 	private _contextMenuActions: IAction[];
 	private _cancelContextMenu: boolean = false;
 	private _font: ITerminalFont;
@@ -117,10 +118,11 @@ export class TerminalPanel extends Panel {
 
 	private _getContextMenuActions(): IAction[] {
 		if (!this._contextMenuActions) {
+			this._copyContextMenuAction = this._instantiationService.createInstance(CopyTerminalSelectionAction, CopyTerminalSelectionAction.ID, nls.localize('copy', "Copy"));
 			this._contextMenuActions = [
 				this._instantiationService.createInstance(CreateNewTerminalAction, CreateNewTerminalAction.ID, nls.localize('createNewTerminal', "New Terminal")),
 				new Separator(),
-				this._instantiationService.createInstance(CopyTerminalSelectionAction, CopyTerminalSelectionAction.ID, nls.localize('copy', "Copy")),
+				this._copyContextMenuAction,
 				this._instantiationService.createInstance(TerminalPasteAction, TerminalPasteAction.ID, nls.localize('paste', "Paste")),
 				new Separator(),
 				this._instantiationService.createInstance(ClearTerminalAction, ClearTerminalAction.ID, nls.localize('clear', "Clear"))
@@ -129,6 +131,7 @@ export class TerminalPanel extends Panel {
 				this._register(a);
 			});
 		}
+		this._copyContextMenuAction.enabled = document.activeElement.classList.contains('xterm') && window.getSelection().toString().length > 0;
 		return this._contextMenuActions;
 	}
 
@@ -148,9 +151,9 @@ export class TerminalPanel extends Panel {
 	}
 
 	private _attachEventListeners(): void {
-		this._register(DOM.addDisposableListener(window, DOM.EventType.KEY_DOWN, (e: KeyboardEvent) => this._refreshCtrlHeld(e.ctrlKey)));
-		this._register(DOM.addDisposableListener(window, DOM.EventType.KEY_UP, (e: KeyboardEvent) => this._refreshCtrlHeld(e.ctrlKey)));
-		this._register(DOM.addDisposableListener(window, DOM.EventType.FOCUS, (e: KeyboardEvent) => this._refreshCtrlHeld(e.ctrlKey)));
+		this._register(DOM.addDisposableListener(window, DOM.EventType.KEY_DOWN, (e: KeyboardEvent) => this._refreshCtrlHeld(e)));
+		this._register(DOM.addDisposableListener(window, DOM.EventType.KEY_UP, (e: KeyboardEvent) => this._refreshCtrlHeld(e)));
+		this._register(DOM.addDisposableListener(window, DOM.EventType.FOCUS, (e: KeyboardEvent) => this._refreshCtrlHeld(e)));
 		this._register(DOM.addDisposableListener(this._parentDomElement, 'mousedown', (event: MouseEvent) => {
 			if (this._terminalService.terminalInstances.length === 0) {
 				return;
@@ -203,8 +206,8 @@ export class TerminalPanel extends Panel {
 		}));
 	}
 
-	private _refreshCtrlHeld(ctrlKey: boolean): void {
-		this._parentDomElement.classList.toggle('ctrl-held', ctrlKey);
+	private _refreshCtrlHeld(e: KeyboardEvent): void {
+		this._parentDomElement.classList.toggle('ctrlcmd-held', platform.isMacintosh ? e.metaKey : e.ctrlKey);
 	}
 
 	private _updateTheme(theme?: ITheme): void {

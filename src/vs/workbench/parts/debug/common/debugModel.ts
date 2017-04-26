@@ -13,8 +13,7 @@ import { clone } from 'vs/base/common/objects';
 import severity from 'vs/base/common/severity';
 import { isObject, isString } from 'vs/base/common/types';
 import { distinct } from 'vs/base/common/arrays';
-import { IRange } from 'vs/editor/common/editorCommon';
-import { Range } from 'vs/editor/common/core/range';
+import { Range, IRange } from 'vs/editor/common/core/range';
 import { ISuggestion } from 'vs/editor/common/modes';
 import { Position } from 'vs/editor/common/core/position';
 import {
@@ -648,13 +647,22 @@ export class Process implements IProcess {
 			column: position.column,
 			line: position.lineNumber
 		}).then(response => {
-			return response && response.body && response.body.targets ? response.body.targets.map(item => (<ISuggestion>{
-				label: item.label,
-				insertText: item.text || item.label,
-				type: item.type,
-				filterText: item.start && item.length && text.substr(item.start, item.length).concat(item.label),
-				overwriteBefore: item.length || overwriteBefore
-			})) : [];
+			const result: ISuggestion[] = [];
+			if (response && response.body && response.body.targets) {
+				response.body.targets.forEach(item => {
+					if (item && item.label) {
+						result.push({
+							label: item.label,
+							insertText: item.text || item.label,
+							type: item.type,
+							filterText: item.start && item.length && text.substr(item.start, item.length).concat(item.label),
+							overwriteBefore: item.length || overwriteBefore
+						});
+					}
+				});
+			}
+
+			return result;
 		}, err => []);
 	}
 }
@@ -849,15 +857,13 @@ export class Model implements IModel {
 			const bpData = data[bp.getId()];
 			if (bpData) {
 				bp.lineNumber = bpData.line ? bpData.line : bp.lineNumber;
-				bp.column = bpData.column ? bpData.column : bp.column;
+				bp.column = bpData.column;
 				bp.verified = bpData.verified;
 				bp.idFromAdapter = bpData.id;
 				bp.message = bpData.message;
 			}
 		});
 
-		// Remove duplicate breakpoints. This can happen when an adapter updates a line number of a breakpoint
-		this.breakpoints = distinct(this.breakpoints, bp => bp.uri.toString() + bp.lineNumber);
 		this._onDidChangeBreakpoints.fire();
 	}
 

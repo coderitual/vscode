@@ -8,10 +8,14 @@ import Severity from 'vs/base/common/severity';
 import * as modes from 'vs/editor/common/modes';
 import * as types from './extHostTypes';
 import { Position as EditorPosition } from 'vs/platform/editor/common/editor';
-import { IPosition, ISelection, IRange, IDecorationOptions, ISingleEditOperation } from 'vs/editor/common/editorCommon';
+import { IDecorationOptions, EndOfLineSequence } from 'vs/editor/common/editorCommon';
 import * as vscode from 'vscode';
 import URI from 'vs/base/common/uri';
+import { ProgressLocation as MainProgressLocation } from 'vs/platform/progress/common/progress';
 import { SaveReason } from 'vs/workbench/services/textfile/common/textfiles';
+import { IPosition } from 'vs/editor/common/core/position';
+import { IRange } from 'vs/editor/common/core/range';
+import { ISelection } from 'vs/editor/common/core/selection';
 
 export interface PositionLike {
 	line: number;
@@ -46,6 +50,9 @@ export function fromSelection(selection: SelectionLike): ISelection {
 }
 
 export function fromRange(range: RangeLike): IRange {
+	if (!range) {
+		return undefined;
+	}
 	let { start, end } = range;
 	return {
 		startLineNumber: start.line + 1,
@@ -56,6 +63,9 @@ export function fromRange(range: RangeLike): IRange {
 }
 
 export function toRange(range: IRange): types.Range {
+	if (!range) {
+		return undefined;
+	}
 	let { startLineNumber, startColumn, endLineNumber, endColumn } = range;
 	return new types.Range(startLineNumber - 1, startColumn - 1, endLineNumber - 1, endColumn - 1);
 }
@@ -153,14 +163,17 @@ export function fromRangeOrRangeWithMessage(ranges: vscode.Range[] | vscode.Deco
 
 export const TextEdit = {
 
-	from(edit: vscode.TextEdit): ISingleEditOperation {
-		return <ISingleEditOperation>{
+	from(edit: vscode.TextEdit): modes.TextEdit {
+		return <modes.TextEdit>{
 			text: edit.newText,
+			eol: EndOfLine.from(edit.newEol),
 			range: fromRange(edit.range)
 		};
 	},
-	to(edit: ISingleEditOperation): vscode.TextEdit {
-		return new types.TextEdit(toRange(edit.range), edit.text);
+	to(edit: modes.TextEdit): vscode.TextEdit {
+		let result = new types.TextEdit(toRange(edit.range), edit.text);
+		result.newEol = EndOfLine.to(edit.eol);
+		return result;
 	}
 };
 
@@ -168,32 +181,35 @@ export const TextEdit = {
 export namespace SymbolKind {
 
 	const _fromMapping: { [kind: number]: modes.SymbolKind } = Object.create(null);
-	_fromMapping[types.SymbolKind.File] = 'file';
-	_fromMapping[types.SymbolKind.Module] = 'module';
-	_fromMapping[types.SymbolKind.Namespace] = 'namespace';
-	_fromMapping[types.SymbolKind.Package] = 'package';
-	_fromMapping[types.SymbolKind.Class] = 'class';
-	_fromMapping[types.SymbolKind.Method] = 'method';
-	_fromMapping[types.SymbolKind.Property] = 'property';
-	_fromMapping[types.SymbolKind.Field] = 'field';
-	_fromMapping[types.SymbolKind.Constructor] = 'constructor';
-	_fromMapping[types.SymbolKind.Enum] = 'enum';
-	_fromMapping[types.SymbolKind.Interface] = 'interface';
-	_fromMapping[types.SymbolKind.Function] = 'function';
-	_fromMapping[types.SymbolKind.Variable] = 'variable';
-	_fromMapping[types.SymbolKind.Constant] = 'constant';
-	_fromMapping[types.SymbolKind.String] = 'string';
-	_fromMapping[types.SymbolKind.Number] = 'number';
-	_fromMapping[types.SymbolKind.Boolean] = 'boolean';
-	_fromMapping[types.SymbolKind.Array] = 'array';
-	_fromMapping[types.SymbolKind.Object] = 'object';
-	_fromMapping[types.SymbolKind.Key] = 'key';
-	_fromMapping[types.SymbolKind.Null] = 'null';
-	_fromMapping[types.SymbolKind.EnumMember] = 'enum-member';
-	_fromMapping[types.SymbolKind.Struct] = 'struct';
+	_fromMapping[types.SymbolKind.File] = modes.SymbolKind.File;
+	_fromMapping[types.SymbolKind.Module] = modes.SymbolKind.Module;
+	_fromMapping[types.SymbolKind.Namespace] = modes.SymbolKind.Namespace;
+	_fromMapping[types.SymbolKind.Package] = modes.SymbolKind.Package;
+	_fromMapping[types.SymbolKind.Class] = modes.SymbolKind.Class;
+	_fromMapping[types.SymbolKind.Method] = modes.SymbolKind.Method;
+	_fromMapping[types.SymbolKind.Property] = modes.SymbolKind.Property;
+	_fromMapping[types.SymbolKind.Field] = modes.SymbolKind.Field;
+	_fromMapping[types.SymbolKind.Constructor] = modes.SymbolKind.Constructor;
+	_fromMapping[types.SymbolKind.Enum] = modes.SymbolKind.Enum;
+	_fromMapping[types.SymbolKind.Interface] = modes.SymbolKind.Interface;
+	_fromMapping[types.SymbolKind.Function] = modes.SymbolKind.Function;
+	_fromMapping[types.SymbolKind.Variable] = modes.SymbolKind.Variable;
+	_fromMapping[types.SymbolKind.Constant] = modes.SymbolKind.Constant;
+	_fromMapping[types.SymbolKind.String] = modes.SymbolKind.String;
+	_fromMapping[types.SymbolKind.Number] = modes.SymbolKind.Number;
+	_fromMapping[types.SymbolKind.Boolean] = modes.SymbolKind.Boolean;
+	_fromMapping[types.SymbolKind.Array] = modes.SymbolKind.Array;
+	_fromMapping[types.SymbolKind.Object] = modes.SymbolKind.Object;
+	_fromMapping[types.SymbolKind.Key] = modes.SymbolKind.Key;
+	_fromMapping[types.SymbolKind.Null] = modes.SymbolKind.Null;
+	_fromMapping[types.SymbolKind.EnumMember] = modes.SymbolKind.EnumMember;
+	_fromMapping[types.SymbolKind.Struct] = modes.SymbolKind.Struct;
+	_fromMapping[types.SymbolKind.Event] = modes.SymbolKind.Event;
+	_fromMapping[types.SymbolKind.Operator] = modes.SymbolKind.Operator;
+	_fromMapping[types.SymbolKind.TypeParameter] = modes.SymbolKind.TypeParameter;
 
 	export function from(kind: vscode.SymbolKind): modes.SymbolKind {
-		return _fromMapping[kind] || 'property';
+		return _fromMapping[kind] || modes.SymbolKind.Property;
 	}
 
 	export function to(kind: modes.SymbolKind): vscode.SymbolKind {
@@ -278,6 +294,9 @@ export const CompletionItemKind = {
 			case types.CompletionItemKind.File: return 'file';
 			case types.CompletionItemKind.Reference: return 'reference';
 			case types.CompletionItemKind.Folder: return 'folder';
+			case types.CompletionItemKind.Event: return 'event';
+			case types.CompletionItemKind.Operator: return 'operator';
+			case types.CompletionItemKind.TypeParameter: return 'type-parameter';
 		}
 		return 'property';
 	},
@@ -362,5 +381,37 @@ export namespace TextDocumentSaveReason {
 			case SaveReason.WINDOW_CHANGE:
 				return types.TextDocumentSaveReason.FocusOut;
 		}
+	}
+}
+
+
+export namespace EndOfLine {
+
+	export function from(eol: vscode.EndOfLine): EndOfLineSequence {
+		if (eol === types.EndOfLine.CRLF) {
+			return EndOfLineSequence.CRLF;
+		} else if (eol === types.EndOfLine.LF) {
+			return EndOfLineSequence.LF;
+		}
+		return undefined;
+	}
+
+	export function to(eol: EndOfLineSequence): vscode.EndOfLine {
+		if (eol === EndOfLineSequence.CRLF) {
+			return types.EndOfLine.CRLF;
+		} else if (eol === EndOfLineSequence.LF) {
+			return types.EndOfLine.LF;
+		}
+		return undefined;
+	}
+}
+
+export namespace ProgressLocation {
+	export function from(loc: vscode.ProgressLocation): MainProgressLocation {
+		switch (loc) {
+			case types.ProgressLocation.SourceControl: return MainProgressLocation.Scm;
+			case types.ProgressLocation.Window: return MainProgressLocation.Window;
+		}
+		return undefined;
 	}
 }

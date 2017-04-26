@@ -14,7 +14,7 @@ import { isMacintosh } from 'vs/base/common/platform';
 import { MIME_BINARY } from 'vs/base/common/mime';
 import { shorten } from 'vs/base/common/labels';
 import { ActionRunner, IAction } from 'vs/base/common/actions';
-import { Position, IEditorInput, Verbosity } from 'vs/platform/editor/common/editor';
+import { Position, IEditorInput, Verbosity, IUntitledResourceInput } from 'vs/platform/editor/common/editor';
 import { IEditorGroup, toResource } from 'vs/workbench/common/editor';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
@@ -23,7 +23,6 @@ import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IEditorGroupService } from 'vs/workbench/services/group/common/groupService';
-import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { IMessageService } from 'vs/platform/message/common/message';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -40,7 +39,7 @@ import { extractResources } from 'vs/base/browser/dnd';
 import { LinkedMap } from 'vs/base/common/map';
 import { DelegatingWorkbenchEditorService } from 'vs/workbench/services/editor/browser/editorService';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { IThemeService, registerThemingParticipant, ITheme, ICssStyleCollector } from 'vs/platform/theme/common/themeService';
 import { INACTIVE_TAB_BACKGROUND, ACTIVE_TAB_BACKGROUND, ACTIVE_TAB_ACTIVE_GROUP_FOREGROUND, ACTIVE_TAB_INACTIVE_GROUP_FOREGROUND, INACTIVE_TAB_ACTIVE_GROUP_FOREGROUND, INACTIVE_TAB_INACTIVE_GROUP_FOREGROUND, TAB_BORDER, EDITOR_DRAG_AND_DROP_BACKGROUND } from 'vs/workbench/common/theme';
 import { highContrastOutline } from 'vs/platform/theme/common/colorRegistry';
 
@@ -66,7 +65,6 @@ export class TabsTitleControl extends TitleControl {
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IWorkbenchEditorService editorService: IWorkbenchEditorService,
 		@IEditorGroupService editorGroupService: IEditorGroupService,
-		@IUntitledEditorService private untitledEditorService: IUntitledEditorService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IKeybindingService keybindingService: IKeybindingService,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -143,7 +141,7 @@ export class TabsTitleControl extends TitleControl {
 
 				const group = this.context;
 				if (group) {
-					this.editorService.openEditor(this.untitledEditorService.createOrGet(), { pinned: true, index: group.count /* always at the end */ }).done(null, errors.onUnexpectedError); // untitled are always pinned
+					this.editorService.openEditor({ options: { pinned: true, index: group.count /* always at the end */ } } as IUntitledResourceInput).done(null, errors.onUnexpectedError); // untitled are always pinned
 				}
 			}
 		}));
@@ -154,7 +152,7 @@ export class TabsTitleControl extends TitleControl {
 			vertical: ScrollbarVisibility.Hidden,
 			scrollYToX: true,
 			useShadows: false,
-			canUseTranslate3d: true,
+			canUseTranslate3d: false,
 			horizontalScrollbarSize: 3
 		});
 
@@ -221,16 +219,17 @@ export class TabsTitleControl extends TitleControl {
 		element.style.backgroundColor = isDND ? this.getColor(EDITOR_DRAG_AND_DROP_BACKGROUND) : noDNDBackgroundColor;
 
 		// Outline
-		if (this.isHighContrastTheme && isDND) {
+		const hcOutline = this.getColor(highContrastOutline);
+		if (hcOutline && isDND) {
 			element.style.outlineWidth = '2px';
 			element.style.outlineStyle = 'dashed';
-			element.style.outlineColor = this.getColor(highContrastOutline);
-			(<any>element).style.outlineOffset = isTab ? '-5px' : '-3px'; // TS fail (gulp watch)
+			element.style.outlineColor = hcOutline;
+			element.style.outlineOffset = isTab ? '-5px' : '-3px';
 		} else {
 			element.style.outlineWidth = null;
 			element.style.outlineStyle = null;
-			element.style.outlineColor = this.isHighContrastTheme ? this.getColor(highContrastOutline) : null;
-			(<any>element).style.outlineOffset = null; // TS fail (gulp watch)
+			element.style.outlineColor = hcOutline;
+			element.style.outlineOffset = null;
 		}
 	}
 
@@ -275,7 +274,7 @@ export class TabsTitleControl extends TitleControl {
 				tabContainer.title = title;
 				tabContainer.style.borderLeftColor = (index !== 0) ? this.getColor(TAB_BORDER) : null;
 				tabContainer.style.borderRightColor = (index === editorsOfGroup.length - 1) ? this.getColor(TAB_BORDER) : null;
-				tabContainer.style.outlineColor = this.isHighContrastTheme ? this.getColor(highContrastOutline) : null;
+				tabContainer.style.outlineColor = this.getColor(highContrastOutline);
 
 				const tabOptions = this.editorGroupService.getTabOptions();
 				['off', 'left'].forEach(option => {
@@ -732,3 +731,30 @@ class TabActionRunner extends ActionRunner {
 		return super.run(action, { group, editor: group.getEditor(this.index) });
 	}
 }
+
+registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
+
+	// Styling with Outline color (e.g. high contrast theme)
+	const outline = theme.getColor(highContrastOutline);
+	if (outline) {
+		collector.addRule(`
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.active,
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.active:hover  {
+				outline: 1px solid;
+				outline-offset: -5px;
+			}
+
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab:hover  {
+				outline: 1px dashed;
+				outline-offset: -5px;
+			}
+
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.active > .tab-close .action-label,
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.active:hover > .tab-close .action-label,
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.dirty > .tab-close .action-label,
+			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab:hover > .tab-close .action-label {
+				opacity: 1 !important;
+			}
+		`);
+	}
+});

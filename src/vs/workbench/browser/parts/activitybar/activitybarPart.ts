@@ -174,7 +174,7 @@ export class ActivitybarPart extends Part implements IActivityBarService {
 
 		} else {
 			// update
-			const [{badge, clazz}] = stack;
+			const [{ badge, clazz }] = stack;
 			action.setBadge(badge);
 			if (clazz) {
 				action.class = clazz;
@@ -219,17 +219,18 @@ export class ActivitybarPart extends Part implements IActivityBarService {
 
 		// Part container
 		const container = this.getContainer();
-		container.style('background-color', this.getColor(ACTIVITY_BAR_BACKGROUND));
+		const background = this.getColor(ACTIVITY_BAR_BACKGROUND);
+		container.style('background-color', background);
 
-		const useBorder = this.isHighContrastTheme;
+		const hcBorder = this.getColor(highContrastBorder);
 		const isPositionLeft = this.partService.getSideBarPosition() === SideBarPosition.LEFT;
-		container.style('box-sizing', useBorder && isPositionLeft ? 'border-box' : null);
-		container.style('border-right-width', useBorder && isPositionLeft ? '1px' : null);
-		container.style('border-right-style', useBorder && isPositionLeft ? 'solid' : null);
-		container.style('border-right-color', useBorder && isPositionLeft ? this.getColor(highContrastBorder) : null);
-		container.style('border-left-width', useBorder && !isPositionLeft ? '1px' : null);
-		container.style('border-left-style', useBorder && !isPositionLeft ? 'solid' : null);
-		container.style('border-left-color', useBorder && !isPositionLeft ? this.getColor(highContrastBorder) : null);
+		container.style('box-sizing', hcBorder && isPositionLeft ? 'border-box' : null);
+		container.style('border-right-width', hcBorder && isPositionLeft ? '1px' : null);
+		container.style('border-right-style', hcBorder && isPositionLeft ? 'solid' : null);
+		container.style('border-right-color', isPositionLeft ? hcBorder : null);
+		container.style('border-left-width', hcBorder && !isPositionLeft ? '1px' : null);
+		container.style('border-left-style', hcBorder && !isPositionLeft ? 'solid' : null);
+		container.style('border-left-color', !isPositionLeft ? hcBorder : null);
 	}
 
 	private showContextMenu(e: MouseEvent): void {

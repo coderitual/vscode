@@ -11,11 +11,13 @@ import { IdGenerator } from 'vs/base/common/idGenerator';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { ExtHostDocumentData } from 'vs/workbench/api/node/extHostDocumentData';
 import { Selection, Range, Position, EndOfLine, TextEditorRevealType, TextEditorLineNumbersStyle, SnippetString } from './extHostTypes';
-import { ISingleEditOperation, TextEditorCursorStyle, IRange } from 'vs/editor/common/editorCommon';
+import { ISingleEditOperation } from 'vs/editor/common/editorCommon';
 import { IResolvedTextEditorConfiguration, ITextEditorConfigurationUpdate } from 'vs/workbench/api/node/mainThreadEditor';
 import * as TypeConverters from './extHostTypeConverters';
 import { MainThreadEditorsShape } from './extHost.protocol';
 import * as vscode from 'vscode';
+import { TextEditorCursorStyle } from 'vs/editor/common/config/editorOptions';
+import { IRange } from 'vs/editor/common/core/range';
 
 export class TextEditorDecorationType implements vscode.TextEditorDecorationType {
 
@@ -511,7 +513,7 @@ export class ExtHostTextEditor implements vscode.TextEditor {
 	private _runOnProxy(callback: () => TPromise<any>, silent: boolean): TPromise<ExtHostTextEditor> {
 		if (this._disposed) {
 			if (!silent) {
-				return TPromise.wrapError(silent);
+				return TPromise.wrapError<ExtHostTextEditor>(silent);
 			} else {
 				console.warn('TextEditor is closed/disposed');
 				return TPromise.as(undefined);
@@ -519,7 +521,7 @@ export class ExtHostTextEditor implements vscode.TextEditor {
 		}
 		return callback().then(() => this, err => {
 			if (!silent) {
-				return TPromise.wrapError(silent);
+				return TPromise.wrapError<ExtHostTextEditor>(silent);
 			}
 			console.warn(err);
 			return undefined;

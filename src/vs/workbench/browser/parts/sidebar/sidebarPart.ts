@@ -83,14 +83,14 @@ export class SidebarPart extends CompositePart<Viewlet> {
 
 		container.style('background-color', this.getColor(SIDE_BAR_BACKGROUND));
 
-		const useBorder = this.isHighContrastTheme;
+		const hcBorder = this.getColor(highContrastBorder);
 		const isPositionLeft = this.partService.getSideBarPosition() === SideBarPosition.LEFT;
-		container.style('border-right-width', useBorder && isPositionLeft ? '1px' : null);
-		container.style('border-right-style', useBorder && isPositionLeft ? 'solid' : null);
-		container.style('border-right-color', useBorder && isPositionLeft ? this.getColor(highContrastBorder) : null);
-		container.style('border-left-width', useBorder && !isPositionLeft ? '1px' : null);
-		container.style('border-left-style', useBorder && !isPositionLeft ? 'solid' : null);
-		container.style('border-left-color', useBorder && !isPositionLeft ? this.getColor(highContrastBorder) : null);
+		container.style('border-right-width', hcBorder && isPositionLeft ? '1px' : null);
+		container.style('border-right-style', hcBorder && isPositionLeft ? 'solid' : null);
+		container.style('border-right-color', isPositionLeft ? hcBorder : null);
+		container.style('border-left-width', hcBorder && !isPositionLeft ? '1px' : null);
+		container.style('border-left-style', hcBorder && !isPositionLeft ? 'solid' : null);
+		container.style('border-left-color', !isPositionLeft ? hcBorder : null);
 	}
 
 	public openViewlet(id: string, focus?: boolean): TPromise<Viewlet> {
@@ -99,7 +99,7 @@ export class SidebarPart extends CompositePart<Viewlet> {
 		}
 
 		// First check if sidebar is hidden and show if so
-		let promise = TPromise.as(null);
+		let promise = TPromise.as<any>(null);
 		if (!this.partService.isVisible(Parts.SIDEBAR_PART)) {
 			try {
 				this.blockOpeningViewlet = true;

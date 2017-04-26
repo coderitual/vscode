@@ -241,7 +241,9 @@ export function getJavascriptMode(documentRegions: LanguageModelCache<HTMLDocume
 			return null;
 		},
 		format(document: TextDocument, range: Range, formatParams: FormattingOptions): TextEdit[] {
-			updateCurrentTextDocument(document);
+			currentTextDocument = documentRegions.get(document).getEmbeddedDocument('javascript', true);
+			scriptFileVersion++;
+
 			let initialIndentLevel = computeInitialIndent(document, range, formatParams);
 			let formatSettings = convertOptions(formatParams, settings && settings.format, initialIndentLevel + 1);
 			let start = currentTextDocument.offsetAt(range.start);
@@ -363,6 +365,7 @@ function convertOptions(options: FormattingOptions, formatSettings: any, initial
 		InsertSpaceAfterFunctionKeywordForAnonymousFunctions: Boolean(!formatSettings || formatSettings.insertSpaceAfterFunctionKeywordForAnonymousFunctions),
 		InsertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis: Boolean(formatSettings && formatSettings.insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis),
 		InsertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets: Boolean(formatSettings && formatSettings.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets),
+		InsertSpaceAfterOpeningAndBeforeClosingNonemptyBraces: Boolean(formatSettings && formatSettings.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces),
 		InsertSpaceAfterOpeningAndBeforeClosingTemplateStringBraces: Boolean(formatSettings && formatSettings.insertSpaceAfterOpeningAndBeforeClosingTemplateStringBraces),
 		PlaceOpenBraceOnNewLineForControlBlocks: Boolean(formatSettings && formatSettings.placeOpenBraceOnNewLineForFunctions),
 		PlaceOpenBraceOnNewLineForFunctions: Boolean(formatSettings && formatSettings.placeOpenBraceOnNewLineForControlBlocks)

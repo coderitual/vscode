@@ -489,7 +489,7 @@ export class VSCodeMenu {
 	private setOpenRecentMenu(openRecentMenu: Electron.Menu): void {
 		openRecentMenu.append(this.createMenuItem(nls.localize({ key: 'miReopenClosedEditor', comment: ['&& denotes a mnemonic'] }, "&&Reopen Closed Editor"), 'workbench.action.reopenClosedEditor'));
 
-		const {folders, files} = this.windowsService.getRecentPathsList();
+		const { folders, files } = this.windowsService.getRecentPathsList();
 
 		// Folders
 		if (folders.length > 0) {
@@ -828,7 +828,7 @@ export class VSCodeMenu {
 		const disableAllBreakpoints = this.createMenuItem(nls.localize({ key: 'miDisableAllBreakpoints', comment: ['&& denotes a mnemonic'] }, "Disable A&&ll Breakpoints"), 'workbench.debug.viewlet.action.disableAllBreakpoints');
 		const removeAllBreakpoints = this.createMenuItem(nls.localize({ key: 'miRemoveAllBreakpoints', comment: ['&& denotes a mnemonic'] }, "Remove &&All Breakpoints"), 'workbench.debug.viewlet.action.removeAllBreakpoints');
 
-		const installMoreDebuggers = this.createMenuItem(nls.localize({ key: 'miInstallMoreDebuggers', comment: ['&& denotes a mnemonic'] }, "&&Install More Debuggers..."), 'debug.installMoreDebuggers');
+		const installAdditionalDebuggers = this.createMenuItem(nls.localize({ key: 'miInstallAdditionalDebuggers', comment: ['&& denotes a mnemonic'] }, "&&Install Additional Debuggers..."), 'debug.installAdditionalDebuggers');
 		[
 			start,
 			startWithoutDebugging,
@@ -848,7 +848,7 @@ export class VSCodeMenu {
 			disableAllBreakpoints,
 			removeAllBreakpoints,
 			__separator__(),
-			installMoreDebuggers
+			installAdditionalDebuggers
 		].forEach(item => debugMenu.append(item));
 
 	}
@@ -1064,11 +1064,11 @@ export class VSCodeMenu {
 			// the keybinding is not native so we cannot show it as part of the accelerator of
 			// the menu item. we fallback to a different strategy so that we always display it
 			else {
-				const bindingIndex = options.label.indexOf('(');
+				const bindingIndex = options.label.indexOf('[');
 				if (bindingIndex >= 0) {
-					options.label = `${options.label.substr(0, bindingIndex)} (${binding.label})`;
+					options.label = `${options.label.substr(0, bindingIndex)} [${binding.label}]`;
 				} else {
-					options.label = `${options.label} (${binding.label})`;
+					options.label = `${options.label} [${binding.label}]`;
 				}
 			}
 		}

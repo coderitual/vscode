@@ -8,18 +8,6 @@
 declare module 'vscode' {
 
 	/**
-	 * Defines a generalized way of reporing progress updates.
-	 */
-	export interface Progress<T> {
-
-		/**
-		 * Report a progress update.
-		 * @param value A progress item, like a message or an updated percentage value
-		 */
-		report(value: T): void
-	}
-
-	/**
 	 * Defines a problem pattern
 	 */
 	export interface ProblemPattern {
@@ -279,6 +267,30 @@ declare module 'vscode' {
 		env?: { [key: string]: string };
 	}
 
+	export namespace TaskGroup {
+		/**
+		 * The clean task group
+		 */
+		export const Clean: 'clean';
+		/**
+		 * The build task group
+		 */
+		export const Build: 'build';
+		/**
+		 * The rebuild all task group
+		 */
+		export const RebuildAll: 'rebuildAll';
+		/**
+		 * The test task group
+		 */
+		export const Test: 'test';
+	}
+
+	/**
+	 * The supported task groups.
+	 */
+	export type TaskGroup = 'clean' | 'build' | 'rebuildAll' | 'test';
+
 	/**
 	 * A task that starts an external process.
 	 */
@@ -341,6 +353,12 @@ declare module 'vscode' {
 		args: string[];
 
 		/**
+		 * The task group this tasks belongs to. Defaults to undefined meaning
+		 * that the task doesn't belong to any special group.
+		 */
+		group?: TaskGroup;
+
+		/**
 		 * The process options used when the process is executed.
 		 * Defaults to an empty object literal.
 		 */
@@ -358,16 +376,16 @@ declare module 'vscode' {
 		problemMatchers: ProblemMatcher[];
 	}
 
-	export interface ShellOptions {
+	export type ShellOptions = {
 		/**
 		 * The shell executable.
 		 */
-		executable?: string;
+		executable: string;
 
 		/**
-		 * The arguments to be passed to the shell executable.
+		 * The arguments to be passed to the shell executable used to run the task.
 		 */
-		args?: string[];
+		shellArgs?: string[];
 
 		/**
 		 * The current working directory of the executed shell.
@@ -381,7 +399,33 @@ declare module 'vscode' {
 		 * the parent process' environment.
 		 */
 		env?: { [key: string]: string };
-	}
+	} | {
+			/**
+			 * The current working directory of the executed shell.
+			 * If omitted VSCode's current workspace root is used.
+			 */
+			cwd: string;
+
+			/**
+			 * The additional environment of the executed shell. If omitted
+			 * the parent process' environment is used. If provided it is merged with
+			 * the parent process' environment.
+			 */
+			env?: { [key: string]: string };
+		} | {
+			/**
+			 * The current working directory of the executed shell.
+			 * If omitted VSCode's current workspace root is used.
+			 */
+			cwd?: string;
+
+			/**
+			 * The additional environment of the executed shell. If omitted
+			 * the parent process' environment is used. If provided it is merged with
+			 * the parent process' environment.
+			 */
+			env: { [key: string]: string };
+		};
 
 	/**
 	 * A task that executes a shell command.
@@ -429,6 +473,12 @@ declare module 'vscode' {
 		readonly commandLine: string;
 
 		/**
+		 * The task group this tasks belongs to. Defaults to undefined meaning
+		 * that the task doesn't belong to any special group.
+		 */
+		group?: TaskGroup;
+
+		/**
 		 * The shell options used when the shell is executed. Defaults to an
 		 * empty object literal.
 		 */
@@ -449,29 +499,6 @@ declare module 'vscode' {
 	export type Task = ProcessTask | ShellTask;
 
 	/**
-	 * Result return from a task provider.
-	 */
-	export interface TaskSet {
-		/**
-		 * The actual tasks returned.
-		 */
-		tasks: Task[];
-
-		/**
-		 * The build tasks provided. Tasks must be identified using
-		 * `Task.identifier`
-		 */
-		buildTasks?: string[];
-
-		/**
-		 * The test tasks provided. Tasks must be identified using
-		 * `Task.identifier`
-		 */
-		testTasks?: string[];
-	}
-
-
-	/**
 	 * A task provider allows to add tasks to the task service.
 	 * A task provider is registerd via #workspace.registerTaskProvider.
 	 */
@@ -481,7 +508,7 @@ declare module 'vscode' {
 		 * @param token A cancellation token.
 		 * @return a #TaskSet
 		 */
-		provideTasks(token: CancellationToken): ProviderResult<TaskSet>;
+		provideTasks(token: CancellationToken): ProviderResult<Task[]>;
 	}
 
 	export namespace workspace {
@@ -497,46 +524,49 @@ declare module 'vscode' {
 
 	export namespace window {
 
-		/**
-		 * Show window-wide progress, e.g. in the status bar, for the provided task. The task is
-		 * considering running as long as the promise it returned isn't resolved or rejected.
-		 *
-		 * @param task A function callback that represents a long running operation.
-		 */
-		export function withWindowProgress<R>(title: string, task: (progress: Progress<string>, token: CancellationToken) => Thenable<R>): Thenable<R>;
-
-		export function withScmProgress<R>(task: (progress: Progress<number>) => Thenable<R>): Thenable<R>;
-
 		export function sampleFunction(): Thenable<any>;
 	}
 
 	export namespace window {
 
 		/**
-		 * Register a [TreeExplorerNodeProvider](#TreeExplorerNodeProvider).
+		 * Create a new [TreeView](#TreeView) instance.
 		 *
-		 * @param providerId A unique id that identifies the provider.
-		 * @param provider A [TreeExplorerNodeProvider](#TreeExplorerNodeProvider).
-		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
+		 * @param viewId A unique id that identifies the view.
+		 * @param provider A [TreeDataProvider](#TreeDataProvider).
+		 * @return An instance of [TreeView](#TreeView).
 		 */
-		export function registerTreeExplorerNodeProvider(providerId: string, provider: TreeExplorerNodeProvider<any>): Disposable;
+		export function createTreeView<T>(viewId: string, provider: TreeDataProvider<T>): TreeView<T>;
 	}
 
 	/**
-	 * A node provider for a tree explorer contribution.
+	 * An source control is able to provide [resource states](#SourceControlResourceState)
+	 * to the editor and interact with the editor in several source control related ways.
+	 */
+	export interface TreeView<T> {
+
+		/**
+		 * Refresh the given nodes
+		 */
+		refresh(...nodes: T[]): void;
+
+		/**
+		 * Dispose this view
+		 */
+		dispose(): void;
+	}
+
+	/**
+	 * A data provider for a tree view contribution.
 	 *
-	 * Providers are registered through (#window.registerTreeExplorerNodeProvider) with a
-	 * `providerId` that corresponds to the `treeExplorerNodeProviderId` in the extension's
-	 * `contributes.explorer` section.
-	 *
-	 * The contributed tree explorer will ask the corresponding provider to provide the root
+	 * The contributed tree view will ask the corresponding provider to provide the root
 	 * node and resolve children for each node. In addition, the provider could **optionally**
 	 * provide the following information for each node:
 	 * - label: A human-readable label used for rendering the node.
 	 * - hasChildren: Whether the node has children and is expandable.
 	 * - clickCommand: A command to execute when the node is clicked.
 	 */
-	export interface TreeExplorerNodeProvider<T> {
+	export interface TreeDataProvider<T> {
 
 		/**
 		 * Provide the root node. This function will be called when the tree explorer is activated
@@ -553,7 +583,7 @@ declare module 'vscode' {
 		 * @param node The node from which the provider resolves children.
 		 * @return Children of `node`.
 		 */
-		resolveChildren(node: T): T[] | Thenable<T[]>;
+		resolveChildren?(node: T): T[] | Thenable<T[]>;
 
 		/**
 		 * Provide a human-readable string that will be used for rendering the node. Default to use
@@ -581,204 +611,7 @@ declare module 'vscode' {
 		 * @param node The node that the command is associated with.
 		 * @return The command to execute when `node` is clicked.
 		 */
-		getClickCommand?(node: T): string;
-	}
-
-	/**
-	 * The theme-aware decorations for a [SCM resource](#SCMResource).
-	 */
-	export interface SCMResourceThemableDecorations {
-
-		/**
-		 * The icon path for a specific [SCM resource](#SCMResource).
-		 */
-		readonly iconPath?: string | Uri;
-	}
-
-	/**
-	 * The decorations for a [SCM resource](#SCMResource). Can be specified
-	 * for light and dark themes, independently.
-	 */
-	export interface SCMResourceDecorations extends SCMResourceThemableDecorations {
-
-		/**
-		 * Whether the [SCM resource](#SCMResource) should be striked-through
-		 * in the UI.
-		 */
-		readonly strikeThrough?: boolean;
-
-		/**
-		 * The light theme decorations.
-		 */
-		readonly light?: SCMResourceThemableDecorations;
-
-		/**
-		 * The dark theme decorations.
-		 */
-		readonly dark?: SCMResourceThemableDecorations;
-	}
-
-	/**
-	 * An SCM resource represents a state of an underlying workspace resource
-	 * within a certain SCM provider state.
-	 *
-	 * For example, consider file A to be modified. An SCM resource which would
-	 * represent such state could have the following properties:
-	 *
-	 *   - `uri = 'git:workingtree/A'`
-	 *   - `sourceUri = 'file:A'`
-	 */
-	export interface SCMResource {
-
-		/**
-		 * The [uri](#Uri) of this SCM resource.
-		 */
-		readonly uri: Uri;
-
-		/**
-		 * The [uri](#Uri) of the underlying resource inside the workspace.
-		 */
-		readonly sourceUri: Uri;
-
-		/**
-		 * The [decorations](#SCMResourceDecorations) for this SCM resource.
-		 */
-		readonly decorations?: SCMResourceDecorations;
-	}
-
-	/**
-	 * An SCM resource group is a collection of [SCM resources](#SCMResource).
-	 */
-	export interface SCMResourceGroup {
-
-		/**
-		 * The [uri](#Uri) of this SCM resource group.
-		 */
-		readonly uri: Uri;
-
-		/**
-		 * The identifier of the SCM resource group, which will be used to populate
-		 * the value of the `scmResourceGroup` context key.
-		 */
-		readonly id: string;
-
-		/**
-		 * The UI label of the SCM resource group.
-		 */
-		readonly label: string;
-
-		/**
-		 * The collection of [SCM resources](#SCMResource) within the SCM resource group.
-		 */
-		readonly resources: SCMResource[];
-	}
-
-	/**
-	 * An SCM provider is able to provide [SCM resources](#SCMResource) to Code,
-	 * notify of changes in them and interact with Code in several SCM related ways.
-	 */
-	export interface SCMProvider {
-
-		/**
-		 * The identifier of the SCM provider, which will be used to populate
-		 * the value of the `scmProvider` context key.
-		 */
-		readonly id: string;
-
-		/**
-		 * A human-readable label for the name of the SCM Provider.
-		 */
-		readonly label: string;
-
-		/**
-		 * The list of SCM resource groups.
-		 */
-		readonly resources: SCMResourceGroup[];
-
-		/**
-		 * A count of resources, used in the UI as the label for the SCM changes count.
-		 */
-		readonly count?: number;
-
-		/**
-		 * A state identifier, which will be used to populate the value of the
-		 * `scmProviderState` context key.
-		 */
-		readonly state?: string;
-
-		/**
-		 * An [event](#Event) which should fire when any of the following attributes
-		 * have changed:
-		 *   - [resources](#SCMProvider.resources)
-		 *   - [count](#SCMProvider.count)
-		 *   - [state](#SCMProvider.state)
-		 */
-		readonly onDidChange: Event<SCMResourceGroup[]>;
-
-		/**
-		 * Provide a [uri](#Uri) to the original resource of any given resource uri.
-		 *
-		 * @param uri The uri of the resource open in a text editor.
-		 * @param token A cancellation token.
-		 * @return A thenable that resolves to uri of the matching original resource.
-		 */
-		getOriginalResource?(uri: Uri, token: CancellationToken): ProviderResult<Uri>;
-
-		/**
-		 * Open a specific [SCM resource](#SCMResource). Called when SCM resources
-		 * are clicked in the UI, for example.
-		 *
-		 * @param resource The [SCM resource](#SCMResource) which should be open.
-		 * @param token A cancellation token.
-		 * @return A thenable which resolves when the resource is open.
-		 */
-		open?(resource: SCMResource, token: CancellationToken): ProviderResult<void>;
-
-		// TODO@joao: move to SCMInput?
-		acceptChanges?(token: CancellationToken): ProviderResult<void>;
-	}
-
-	/**
-	 * Represents the input box in the SCM view.
-	 */
-	export interface SCMInputBox {
-
-		/**
-		 * Setter and getter for the contents of the input box.
-		 */
-		value: string;
-
-		/**
-		 * An [event](#Event) which fires when the input box value has changed.
-		 */
-		readonly onDidChange: Event<string>;
-	}
-
-	export namespace scm {
-
-		/**
-		 * An [event](#Event) which fires when the active [SCM provider](#SCMProvider)
-		 * has changed.
-		 */
-		export const onDidChangeActiveProvider: Event<SCMProvider>;
-
-		/**
-		 * The currently active [SCM provider](#SCMProvider).
-		 */
-		export let activeProvider: SCMProvider | undefined;
-
-		/**
-		 * The [input box](#SCMInputBox) in the SCM view.
-		 */
-		export const inputBox: SCMInputBox;
-
-		/**
-		 * Registers an [SCM provider](#SCMProvider).
-		 *
-		 * @param id The provider's id.
-		 * @return A disposable which unregisters the provider.
-		 */
-		export function registerSCMProvider(provider: SCMProvider): Disposable;
+		getClickCommand?(node: T): Command;
 	}
 
 	/**

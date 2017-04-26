@@ -17,13 +17,14 @@ import strings = require('vs/base/common/strings');
 import { Range } from 'vs/editor/common/core/range';
 import { EditorInput, IWorkbenchEditorConfiguration } from 'vs/workbench/common/editor';
 import labels = require('vs/base/common/labels');
-import { SymbolInformation } from 'vs/editor/common/modes';
+import { SymbolInformation, symbolKindToCssClass } from 'vs/editor/common/modes';
 import { IResourceInput } from 'vs/platform/editor/common/editor';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IWorkspaceSymbolProvider, getWorkspaceSymbols } from 'vs/workbench/parts/search/common/search';
+import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 
 class SymbolEntry extends EditorQuickOpenEntry {
 
@@ -34,7 +35,8 @@ class SymbolEntry extends EditorQuickOpenEntry {
 		private _provider: IWorkspaceSymbolProvider,
 		@IConfigurationService private _configurationService: IConfigurationService,
 		@IWorkspaceContextService private _contextService: IWorkspaceContextService,
-		@IWorkbenchEditorService editorService: IWorkbenchEditorService
+		@IWorkbenchEditorService editorService: IWorkbenchEditorService,
+		@IEnvironmentService private _environmentService: IEnvironmentService
 	) {
 		super(editorService);
 	}
@@ -50,13 +52,13 @@ class SymbolEntry extends EditorQuickOpenEntry {
 	public getDescription(): string {
 		let result = this._bearing.containerName;
 		if (!result && this._bearing.location.uri) {
-			result = labels.getPathLabel(this._bearing.location.uri, this._contextService);
+			result = labels.getPathLabel(this._bearing.location.uri, this._contextService, this._environmentService);
 		}
 		return result;
 	}
 
 	public getIcon(): string {
-		return this._bearing.kind;
+		return symbolKindToCssClass(this._bearing.kind);
 	}
 
 	public getResource(): URI {
@@ -106,8 +108,8 @@ class SymbolEntry extends EditorQuickOpenEntry {
 		const elementAName = elementA.getLabel().toLowerCase();
 		const elementBName = elementB.getLabel().toLowerCase();
 		if (elementAName === elementBName) {
-			let elementAType = elementA._bearing.kind;
-			let elementBType = elementB._bearing.kind;
+			let elementAType = symbolKindToCssClass(elementA._bearing.kind);
+			let elementBType = symbolKindToCssClass(elementB._bearing.kind);
 			return elementAType.localeCompare(elementBType);
 		}
 

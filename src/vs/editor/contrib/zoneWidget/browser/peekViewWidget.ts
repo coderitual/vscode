@@ -21,7 +21,7 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IOptions, ZoneWidget, IStyles } from './zoneWidget';
 import { EmbeddedCodeEditorWidget } from 'vs/editor/browser/widget/embeddedCodeEditorWidget';
 import { ContextKeyExpr, RawContextKey } from 'vs/platform/contextkey/common/contextkey';
-import { Color } from "vs/base/common/color";
+import { Color } from 'vs/base/common/color';
 
 export var IPeekViewService = createDecorator<IPeekViewService>('peekViewService');
 
@@ -76,7 +76,7 @@ export abstract class PeekViewWidget extends ZoneWidget implements IPeekViewServ
 
 	constructor(editor: ICodeEditor, options: IPeekViewOptions = {}) {
 		super(editor, options);
-		objects.mixin(this.options, defaultOptions);
+		objects.mixin(this.options, defaultOptions, false);
 	}
 
 	public dispose(): void {
@@ -98,7 +98,7 @@ export abstract class PeekViewWidget extends ZoneWidget implements IPeekViewServ
 		super.show(where, heightInLines);
 	}
 
-	public style(styles: IPeekViewStyles) {
+	public style(styles: IPeekViewStyles): void {
 		let options = <IPeekViewOptions>this.options;
 		if (styles.headerBackgroundColor) {
 			options.headerBackgroundColor = styles.headerBackgroundColor;
@@ -112,7 +112,7 @@ export abstract class PeekViewWidget extends ZoneWidget implements IPeekViewServ
 		super.style(styles);
 	}
 
-	protected _applyStyles() {
+	protected _applyStyles(): void {
 		super._applyStyles();
 		let options = <IPeekViewOptions>this.options;
 		if (this._headElement) {

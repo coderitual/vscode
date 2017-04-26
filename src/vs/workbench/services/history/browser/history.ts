@@ -9,12 +9,12 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import errors = require('vs/base/common/errors');
 import objects = require('vs/base/common/objects');
 import URI from 'vs/base/common/uri';
-import { ICursorPositionChangedEvent, IEditor } from 'vs/editor/common/editorCommon';
+import { IEditor } from 'vs/editor/common/editorCommon';
 import { IEditor as IBaseEditor, IEditorInput, ITextEditorOptions, IResourceInput } from 'vs/platform/editor/common/editor';
 import { EditorInput, IGroupEvent, IEditorRegistry, Extensions, toResource, IEditorGroup } from 'vs/workbench/common/editor';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IHistoryService } from 'vs/workbench/services/history/common/history';
-import { FileChangesEvent, IFileService, FileChangeType, isEqual } from 'vs/platform/files/common/files';
+import { FileChangesEvent, IFileService, FileChangeType } from 'vs/platform/files/common/files';
 import { Selection } from 'vs/editor/common/core/selection';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
@@ -28,6 +28,7 @@ import { IWindowService } from 'vs/platform/windows/common/windows';
 import { getCodeEditor } from 'vs/editor/common/services/codeEditorService';
 import { getExcludes, ISearchConfiguration } from 'vs/platform/search/common/search';
 import { ParsedExpression, parse, IExpression } from 'vs/base/common/glob';
+import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 
 /**
  * Stores the selection & view state of an editor and allows to compare it to other selection states.
@@ -590,12 +591,12 @@ export class HistoryService extends BaseHistoryService implements IHistoryServic
 		if (arg2 instanceof EditorInput) {
 			const file = toResource(arg2, { filter: 'file' });
 
-			return file && isEqual(file.fsPath, resource.fsPath);
+			return file && file.toString() === resource.toString();
 		}
 
 		const resourceInput = arg2 as IResourceInput;
 
-		return resourceInput && isEqual(resourceInput.resource.fsPath, resource.fsPath);
+		return resourceInput && resourceInput.resource.toString() === resource.toString();
 	}
 
 	public getHistory(): (IEditorInput | IResourceInput)[] {

@@ -11,20 +11,19 @@ import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { IDebugService, IExceptionInfo } from 'vs/workbench/parts/debug/common/debug';
 import { RunOnceScheduler } from 'vs/base/common/async';
-import { IThemeService, ITheme } from "vs/platform/theme/common/themeService";
-import { Color } from "vs/base/common/color";
-import { registerColor } from "vs/platform/theme/common/colorRegistry";
+import { IThemeService, ITheme } from 'vs/platform/theme/common/themeService';
+import { Color } from 'vs/base/common/color';
+import { registerColor } from 'vs/platform/theme/common/colorRegistry';
 const $ = dom.$;
 
 // theming
 
-export const debugExceptionWidgetBorder = registerColor('debugExceptionWidgetBorder', { dark: '#a31515', light: '#a31515', hc: '#a31515' }, nls.localize('debugExceptionWidgetBorder', 'Exception widget border color'));
-export const debugExceptionWidgetBackground = registerColor('debugExceptionWidgetBackground', { dark: '#a3151540', light: '#a315150d', hc: '#a3151573' }, nls.localize('debugExceptionWidgetBackground', 'Exception widget background color'));
+export const debugExceptionWidgetBorder = registerColor('debugExceptionWidgetBorder', { dark: '#a31515', light: '#a31515', hc: '#a31515' }, nls.localize('debugExceptionWidgetBorder', 'Exception widget border color.'));
+export const debugExceptionWidgetBackground = registerColor('debugExceptionWidgetBackground', { dark: '#a3151540', light: '#a315150d', hc: '#a3151573' }, nls.localize('debugExceptionWidgetBackground', 'Exception widget background color.'));
 
 export class ExceptionWidget extends ZoneWidget {
 
 	private _backgroundColor: Color;
-
 
 	constructor(editor: ICodeEditor, private exceptionInfo: IExceptionInfo, private lineNumber: number,
 		@IContextViewService private contextViewService: IContextViewService,
@@ -45,7 +44,7 @@ export class ExceptionWidget extends ZoneWidget {
 		this._disposables.add(onDidLayoutChangeScheduler);
 	}
 
-	private _applyTheme(theme: ITheme) {
+	private _applyTheme(theme: ITheme): void {
 		this._backgroundColor = theme.getColor(debugExceptionWidgetBackground);
 		let frameColor = theme.getColor(debugExceptionWidgetBorder);
 		this.style({
@@ -54,7 +53,7 @@ export class ExceptionWidget extends ZoneWidget {
 		}); // style() will trigger _applyStyles
 	}
 
-	protected _applyStyles() {
+	protected _applyStyles(): void {
 		if (this.container) {
 			this.container.style.backgroundColor = this._backgroundColor.toString();
 		}
@@ -69,38 +68,20 @@ export class ExceptionWidget extends ZoneWidget {
 		this.container.style.lineHeight = `${fontInfo.lineHeight}px`;
 
 		let title = $('.title');
-		let msg = $('.message');
-		const defaultConditionMessage = nls.localize('exceptionThrown', 'Exception has occurred.');
+		title.textContent = this.exceptionInfo.id ? nls.localize('exceptionThrownWithId', 'Exception has occurred: {0}', this.exceptionInfo.id) : nls.localize('exceptionThrown', 'Exception has occurred.');
+		dom.append(container, title);
 
-		if (this.exceptionInfo.breakMode) {
-			let conditionMessage;
-			switch (this.exceptionInfo.breakMode) {
-				case 'never':
-					conditionMessage = nls.localize('neverException', 'User-handled exception has occurred.');
-					break;
-				case 'always':
-					conditionMessage = nls.localize('alwaysException', 'Always-breaking exception has occurred.');
-					break;
-				case 'unhandled':
-					conditionMessage = nls.localize('unhandledException', 'Unhandled exception has occurred.');
-					break;
-				case 'userUnhandled':
-					conditionMessage = nls.localize('userUnhandledException', 'User-unhandled exception has occurred.');
-					break;
-				default:
-					conditionMessage = defaultConditionMessage;
-					break;
-			}
-
-			title.textContent = `${conditionMessage} ${this.exceptionInfo.description}`;
-			msg.textContent = this.exceptionInfo.details.stackTrace;
-		} else {
-			title.textContent = defaultConditionMessage;
-			msg.textContent = this.exceptionInfo.description;
+		if (this.exceptionInfo.description) {
+			let description = $('.description');
+			description.textContent = this.exceptionInfo.description;
+			dom.append(container, description);
 		}
 
-		dom.append(container, title);
-		dom.append(container, msg);
+		if (this.exceptionInfo.details && this.exceptionInfo.details.stackTrace) {
+			let stackTrace = $('.stack-trace');
+			stackTrace.textContent = this.exceptionInfo.details.stackTrace;
+			dom.append(container, stackTrace);
+		}
 	}
 
 	protected _doLayout(heightInPixel: number, widthInPixel: number): void {

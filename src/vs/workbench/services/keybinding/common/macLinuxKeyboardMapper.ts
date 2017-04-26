@@ -7,10 +7,9 @@
 
 import { OperatingSystem } from 'vs/base/common/platform';
 import { KeyCode, ResolvedKeybinding, KeyCodeUtils, SimpleKeybinding, Keybinding, KeybindingType, USER_SETTINGS } from 'vs/base/common/keyCodes';
-import { ScanCode, ScanCodeUtils, IMMUTABLE_CODE_TO_KEY_CODE, ScanCodeBinding } from 'vs/workbench/services/keybinding/common/scanCode';
+import { ScanCode, ScanCodeUtils, IMMUTABLE_CODE_TO_KEY_CODE, IMMUTABLE_KEY_CODE_TO_CODE, ScanCodeBinding } from 'vs/workbench/services/keybinding/common/scanCode';
 import { CharCode } from 'vs/base/common/charCode';
-import { IHTMLContentElement } from 'vs/base/common/htmlContent';
-import { UILabelProvider, AriaLabelProvider, UserSettingsLabelProvider, ElectronAcceleratorLabelProvider } from 'vs/platform/keybinding/common/keybindingLabels';
+import { UILabelProvider, AriaLabelProvider, UserSettingsLabelProvider, ElectronAcceleratorLabelProvider, NO_MODIFIERS } from 'vs/platform/keybinding/common/keybindingLabels';
 import { IKeyboardMapper } from 'vs/workbench/services/keybinding/common/keyboardMapper';
 import { IKeyboardEvent } from 'vs/platform/keybinding/common/keybinding';
 
@@ -88,22 +87,58 @@ export class NativeResolvedKeybinding extends ResolvedKeybinding {
 		this._chordPart = chordPart;
 	}
 
+	private _getUILabelForScanCodeBinding(binding: ScanCodeBinding): string {
+		if (!binding) {
+			return null;
+		}
+		if (binding.isDuplicateModifierCase()) {
+			return '';
+		}
+		return this._mapper.getUILabelForScanCode(binding.scanCode);
+	}
+
 	public getLabel(): string {
-		let firstPart = this._firstPart ? this._mapper.getUILabelForScanCode(this._firstPart.scanCode) : null;
-		let chordPart = this._chordPart ? this._mapper.getUILabelForScanCode(this._chordPart.scanCode) : null;
+		let firstPart = this._getUILabelForScanCodeBinding(this._firstPart);
+		let chordPart = this._getUILabelForScanCodeBinding(this._chordPart);
 		return UILabelProvider.toLabel(this._firstPart, firstPart, this._chordPart, chordPart, this._OS);
 	}
 
+	public getLabelWithoutModifiers(): string {
+		let firstPart = this._getUILabelForScanCodeBinding(this._firstPart);
+		let chordPart = this._getUILabelForScanCodeBinding(this._chordPart);
+		return UILabelProvider.toLabel(NO_MODIFIERS, firstPart, NO_MODIFIERS, chordPart, this._OS);
+	}
+
+	private _getAriaLabelForScanCodeBinding(binding: ScanCodeBinding): string {
+		if (!binding) {
+			return null;
+		}
+		if (binding.isDuplicateModifierCase()) {
+			return '';
+		}
+		return this._mapper.getAriaLabelForScanCode(binding.scanCode);
+	}
+
 	public getAriaLabel(): string {
-		let firstPart = this._firstPart ? this._mapper.getAriaLabelForScanCode(this._firstPart.scanCode) : null;
-		let chordPart = this._chordPart ? this._mapper.getAriaLabelForScanCode(this._chordPart.scanCode) : null;
+		let firstPart = this._getAriaLabelForScanCodeBinding(this._firstPart);
+		let chordPart = this._getAriaLabelForScanCodeBinding(this._chordPart);
 		return AriaLabelProvider.toLabel(this._firstPart, firstPart, this._chordPart, chordPart, this._OS);
 	}
 
-	public getHTMLLabel(): IHTMLContentElement[] {
-		let firstPart = this._firstPart ? this._mapper.getUILabelForScanCode(this._firstPart.scanCode) : null;
-		let chordPart = this._chordPart ? this._mapper.getUILabelForScanCode(this._chordPart.scanCode) : null;
-		return UILabelProvider.toHTMLLabel(this._firstPart, firstPart, this._chordPart, chordPart, this._OS);
+	public getAriaLabelWithoutModifiers(): string {
+		let firstPart = this._getAriaLabelForScanCodeBinding(this._firstPart);
+		let chordPart = this._getAriaLabelForScanCodeBinding(this._chordPart);
+		return AriaLabelProvider.toLabel(NO_MODIFIERS, firstPart, NO_MODIFIERS, chordPart, this._OS);
+	}
+
+	private _getElectronAcceleratorLabelForScanCodeBinding(binding: ScanCodeBinding): string {
+		if (!binding) {
+			return null;
+		}
+		if (binding.isDuplicateModifierCase()) {
+			return null;
+		}
+		return this._mapper.getElectronLabelForScanCode(binding.scanCode);
 	}
 
 	public getElectronAccelerator(): string {
@@ -112,13 +147,23 @@ export class NativeResolvedKeybinding extends ResolvedKeybinding {
 			return null;
 		}
 
-		let firstPart = this._firstPart ? this._mapper.getElectronLabelForScanCode(this._firstPart.scanCode) : null;
+		let firstPart = this._getElectronAcceleratorLabelForScanCodeBinding(this._firstPart);
 		return ElectronAcceleratorLabelProvider.toLabel(this._firstPart, firstPart, null, null, this._OS);
 	}
 
+	private _getUserSettingsLabelForScanCodeBinding(binding: ScanCodeBinding): string {
+		if (!binding) {
+			return null;
+		}
+		if (binding.isDuplicateModifierCase()) {
+			return '';
+		}
+		return this._mapper.getUserSettingsLabel(binding.scanCode);
+	}
+
 	public getUserSettingsLabel(): string {
-		let firstPart = this._firstPart ? this._mapper.getUserSettingsLabel(this._firstPart.scanCode) : null;
-		let chordPart = this._chordPart ? this._mapper.getUserSettingsLabel(this._chordPart.scanCode) : null;
+		let firstPart = this._getUserSettingsLabelForScanCodeBinding(this._firstPart);
+		let chordPart = this._getUserSettingsLabelForScanCodeBinding(this._chordPart);
 		return UserSettingsLabelProvider.toLabel(this._firstPart, firstPart, this._chordPart, chordPart, this._OS);
 	}
 
@@ -175,6 +220,10 @@ export class NativeResolvedKeybinding extends ResolvedKeybinding {
 			return false;
 		}
 		return this._firstPart.metaKey;
+	}
+
+	public getParts(): [ResolvedKeybinding, ResolvedKeybinding] {
+		return [new NativeResolvedKeybinding(this._mapper, this._OS, this._firstPart, null), this._chordPart ? new NativeResolvedKeybinding(this._mapper, this._OS, this._chordPart, null) : null];
 	}
 
 	public getDispatchParts(): [string, string] {
@@ -463,6 +512,10 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 	/**
 	 * OS (can be Linux or Macintosh)
 	 */
+	private readonly _isUSStandard: boolean;
+	/**
+	 * OS (can be Linux or Macintosh)
+	 */
 	private readonly _OS: OperatingSystem;
 	/**
 	 * used only for debug purposes.
@@ -481,13 +534,25 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 	 */
 	private readonly _scanCodeToDispatch: string[] = [];
 
-	constructor(rawMappings: IMacLinuxKeyboardMapping, OS: OperatingSystem) {
+	constructor(isUSStandard: boolean, rawMappings: IMacLinuxKeyboardMapping, OS: OperatingSystem) {
+		this._isUSStandard = isUSStandard;
 		this._OS = OS;
 		this._codeInfo = [];
 		this._scanCodeKeyCodeMapper = new ScanCodeKeyCodeMapper();
 		this._scanCodeToLabel = [];
 		this._scanCodeToDispatch = [];
 
+		// Initialize `_scanCodeToLabel`
+		for (let scanCode = ScanCode.None; scanCode < ScanCode.MAX_VALUE; scanCode++) {
+			this._scanCodeToLabel[scanCode] = null;
+		}
+
+		// Initialize `_scanCodeToDispatch`
+		for (let scanCode = ScanCode.None; scanCode < ScanCode.MAX_VALUE; scanCode++) {
+			this._scanCodeToDispatch[scanCode] = null;
+		}
+
+		// Handle immutable mappings
 		for (let scanCode = ScanCode.None; scanCode < ScanCode.MAX_VALUE; scanCode++) {
 			const keyCode = IMMUTABLE_CODE_TO_KEY_CODE[scanCode];
 			if (keyCode !== -1) {
@@ -503,6 +568,7 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 		}
 
 		let mappings: IScanCodeMapping[] = [], mappingsLen = 0;
+		let producesLetter: boolean[] = [];
 		for (let strScanCode in rawMappings) {
 			if (rawMappings.hasOwnProperty(strScanCode)) {
 				const scanCode = ScanCodeUtils.toEnum(strScanCode);
@@ -533,7 +599,12 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 				this._scanCodeToDispatch[scanCode] = `[${ScanCodeUtils.toString(scanCode)}]`;
 
 				if (value >= CharCode.a && value <= CharCode.z) {
-					this._scanCodeToLabel[scanCode] = String.fromCharCode(CharCode.A + (value - CharCode.a));
+					const upperCaseValue = CharCode.A + (value - CharCode.a);
+					producesLetter[upperCaseValue] = true;
+					this._scanCodeToLabel[scanCode] = String.fromCharCode(upperCaseValue);
+				} else if (value >= CharCode.A && value <= CharCode.Z) {
+					producesLetter[value] = true;
+					this._scanCodeToLabel[scanCode] = String.fromCharCode(value);
 				} else if (value) {
 					this._scanCodeToLabel[scanCode] = String.fromCharCode(value);
 				} else {
@@ -589,7 +660,41 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 		this._registerAllCombos1(false, false, false, ScanCode.Digit9, KeyCode.KEY_9);
 		this._registerAllCombos1(false, false, false, ScanCode.Digit0, KeyCode.KEY_0);
 
+		// Ensure letters are mapped
+		this._registerLetterIfMissing(producesLetter, CharCode.A, ScanCode.KeyA, KeyCode.KEY_A);
+		this._registerLetterIfMissing(producesLetter, CharCode.B, ScanCode.KeyB, KeyCode.KEY_B);
+		this._registerLetterIfMissing(producesLetter, CharCode.C, ScanCode.KeyC, KeyCode.KEY_C);
+		this._registerLetterIfMissing(producesLetter, CharCode.D, ScanCode.KeyD, KeyCode.KEY_D);
+		this._registerLetterIfMissing(producesLetter, CharCode.E, ScanCode.KeyE, KeyCode.KEY_E);
+		this._registerLetterIfMissing(producesLetter, CharCode.F, ScanCode.KeyF, KeyCode.KEY_F);
+		this._registerLetterIfMissing(producesLetter, CharCode.G, ScanCode.KeyG, KeyCode.KEY_G);
+		this._registerLetterIfMissing(producesLetter, CharCode.H, ScanCode.KeyH, KeyCode.KEY_H);
+		this._registerLetterIfMissing(producesLetter, CharCode.I, ScanCode.KeyI, KeyCode.KEY_I);
+		this._registerLetterIfMissing(producesLetter, CharCode.J, ScanCode.KeyJ, KeyCode.KEY_J);
+		this._registerLetterIfMissing(producesLetter, CharCode.K, ScanCode.KeyK, KeyCode.KEY_K);
+		this._registerLetterIfMissing(producesLetter, CharCode.L, ScanCode.KeyL, KeyCode.KEY_L);
+		this._registerLetterIfMissing(producesLetter, CharCode.M, ScanCode.KeyM, KeyCode.KEY_M);
+		this._registerLetterIfMissing(producesLetter, CharCode.N, ScanCode.KeyN, KeyCode.KEY_N);
+		this._registerLetterIfMissing(producesLetter, CharCode.O, ScanCode.KeyO, KeyCode.KEY_O);
+		this._registerLetterIfMissing(producesLetter, CharCode.P, ScanCode.KeyP, KeyCode.KEY_P);
+		this._registerLetterIfMissing(producesLetter, CharCode.Q, ScanCode.KeyQ, KeyCode.KEY_Q);
+		this._registerLetterIfMissing(producesLetter, CharCode.R, ScanCode.KeyR, KeyCode.KEY_R);
+		this._registerLetterIfMissing(producesLetter, CharCode.S, ScanCode.KeyS, KeyCode.KEY_S);
+		this._registerLetterIfMissing(producesLetter, CharCode.T, ScanCode.KeyT, KeyCode.KEY_T);
+		this._registerLetterIfMissing(producesLetter, CharCode.U, ScanCode.KeyU, KeyCode.KEY_U);
+		this._registerLetterIfMissing(producesLetter, CharCode.V, ScanCode.KeyV, KeyCode.KEY_V);
+		this._registerLetterIfMissing(producesLetter, CharCode.W, ScanCode.KeyW, KeyCode.KEY_W);
+		this._registerLetterIfMissing(producesLetter, CharCode.X, ScanCode.KeyX, KeyCode.KEY_X);
+		this._registerLetterIfMissing(producesLetter, CharCode.Y, ScanCode.KeyY, KeyCode.KEY_Y);
+		this._registerLetterIfMissing(producesLetter, CharCode.Z, ScanCode.KeyZ, KeyCode.KEY_Z);
+
 		this._scanCodeKeyCodeMapper.registrationComplete();
+	}
+
+	private _registerLetterIfMissing(producesLetter: boolean[], charCode: CharCode, scanCode: ScanCode, keyCode: KeyCode): void {
+		if (!producesLetter[charCode]) {
+			this._registerAllCombos1(false, false, false, scanCode, keyCode);
+		}
 	}
 
 	public dumpDebugInfo(): string {
@@ -601,6 +706,7 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 		];
 
 		let cnt = 0;
+		result.push(`isUSStandard: ${this._isUSStandard}`);
 		result.push(`----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------`);
 		for (let scanCode = ScanCode.None; scanCode < ScanCode.MAX_VALUE; scanCode++) {
 			if (IMMUTABLE_CODE_TO_KEY_CODE[scanCode] !== -1) {
@@ -782,6 +888,11 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 	}
 
 	public simpleKeybindingToScanCodeBinding(keybinding: SimpleKeybinding): ScanCodeBinding[] {
+		// Avoid double Enter bindings (both ScanCode.NumpadEnter and ScanCode.Enter point to KeyCode.Enter)
+		if (keybinding.keyCode === KeyCode.Enter) {
+			return [new ScanCodeBinding(keybinding.ctrlKey, keybinding.shiftKey, keybinding.altKey, keybinding.metaKey, ScanCode.Enter)];
+		}
+
 		const scanCodeCombos = this._scanCodeKeyCodeMapper.lookupKeyCodeCombo(
 			new KeyCodeCombo(keybinding.ctrlKey, keybinding.shiftKey, keybinding.altKey, keybinding.keyCode)
 		);
@@ -882,6 +993,27 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 
 		// Check if this scanCode always maps to the same keyCode and back
 		let constantKeyCode: KeyCode = this._scanCodeKeyCodeMapper.guessStableKeyCode(scanCode);
+
+		if (!this._isUSStandard) {
+			// Electron cannot handle these key codes on anything else than standard US
+			const isOEMKey = (
+				constantKeyCode === KeyCode.US_SEMICOLON
+				|| constantKeyCode === KeyCode.US_EQUAL
+				|| constantKeyCode === KeyCode.US_COMMA
+				|| constantKeyCode === KeyCode.US_MINUS
+				|| constantKeyCode === KeyCode.US_DOT
+				|| constantKeyCode === KeyCode.US_SLASH
+				|| constantKeyCode === KeyCode.US_BACKTICK
+				|| constantKeyCode === KeyCode.US_OPEN_SQUARE_BRACKET
+				|| constantKeyCode === KeyCode.US_BACKSLASH
+				|| constantKeyCode === KeyCode.US_CLOSE_SQUARE_BRACKET
+			);
+
+			if (isOEMKey) {
+				return null;
+			}
+		}
+
 		if (constantKeyCode !== -1) {
 			return this._getElectronLabelForKeyCode(constantKeyCode);
 		}
@@ -918,7 +1050,59 @@ export class MacLinuxKeyboardMapper implements IKeyboardMapper {
 	}
 
 	public resolveKeyboardEvent(keyboardEvent: IKeyboardEvent): NativeResolvedKeybinding {
-		const keypress = new ScanCodeBinding(keyboardEvent.ctrlKey, keyboardEvent.shiftKey, keyboardEvent.altKey, keyboardEvent.metaKey, ScanCodeUtils.toEnum(keyboardEvent.code));
+		let code = ScanCodeUtils.toEnum(keyboardEvent.code);
+		// Treat NumpadEnter as Enter
+		if (code === ScanCode.NumpadEnter) {
+			code = ScanCode.Enter;
+		}
+
+		const keyCode = keyboardEvent.keyCode;
+
+		if (
+			(keyCode === KeyCode.LeftArrow)
+			|| (keyCode === KeyCode.UpArrow)
+			|| (keyCode === KeyCode.RightArrow)
+			|| (keyCode === KeyCode.DownArrow)
+			|| (keyCode === KeyCode.Delete)
+			|| (keyCode === KeyCode.Insert)
+			|| (keyCode === KeyCode.Home)
+			|| (keyCode === KeyCode.End)
+			|| (keyCode === KeyCode.PageDown)
+			|| (keyCode === KeyCode.PageUp)
+		) {
+			// "Dispatch" on keyCode for these key codes to workaround issues with remote desktoping software
+			// where the scan codes appear to be incorrect (see https://github.com/Microsoft/vscode/issues/24107)
+			const immutableScanCode = IMMUTABLE_KEY_CODE_TO_CODE[keyCode];
+			if (immutableScanCode !== -1) {
+				code = immutableScanCode;
+			}
+
+		} else {
+
+			if (
+				(code === ScanCode.Numpad1)
+				|| (code === ScanCode.Numpad2)
+				|| (code === ScanCode.Numpad3)
+				|| (code === ScanCode.Numpad4)
+				|| (code === ScanCode.Numpad5)
+				|| (code === ScanCode.Numpad6)
+				|| (code === ScanCode.Numpad7)
+				|| (code === ScanCode.Numpad8)
+				|| (code === ScanCode.Numpad9)
+				|| (code === ScanCode.Numpad0)
+				|| (code === ScanCode.NumpadDecimal)
+			) {
+				// "Dispatch" on keyCode for all numpad keys in order for NumLock to work correctly
+				if (keyCode >= 0) {
+					const immutableScanCode = IMMUTABLE_KEY_CODE_TO_CODE[keyCode];
+					if (immutableScanCode !== -1) {
+						code = immutableScanCode;
+					}
+				}
+			}
+		}
+
+		const keypress = new ScanCodeBinding(keyboardEvent.ctrlKey, keyboardEvent.shiftKey, keyboardEvent.altKey, keyboardEvent.metaKey, code);
 		return new NativeResolvedKeybinding(this, this._OS, keypress, null);
 	}
 

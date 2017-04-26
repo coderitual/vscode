@@ -104,7 +104,7 @@ import 'vs/platform/opener/browser/opener.contribution';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import { WorkbenchThemeService } from 'vs/workbench/services/themes/electron-browser/workbenchThemeService';
 import { registerThemingParticipant, ITheme, ICssStyleCollector } from 'vs/platform/theme/common/themeService';
-import { foreground } from 'vs/platform/theme/common/colorRegistry';
+import { foreground, focus, scrollbarShadow, scrollbarSliderActiveBackground, scrollbarSliderBackground, scrollbarSliderHoverBackground } from 'vs/platform/theme/common/colorRegistry';
 
 /**
  * Services that we require for the Shell
@@ -225,8 +225,7 @@ export class WorkbenchShell {
 		});
 
 		// Telemetry: startup metrics
-		const workbenchStarted = Date.now();
-		this.timerService.workbenchStarted = new Date(workbenchStarted);
+		this.timerService.workbenchStarted = Date.now();
 		this.timerService.restoreEditorsDuration = info.restoreEditorsDuration;
 		this.timerService.restoreViewletDuration = info.restoreViewletDuration;
 		this.extensionService.onReady().done(() => {
@@ -245,8 +244,7 @@ export class WorkbenchShell {
 		// Profiler: startup cpu profile
 		const { profileStartup } = this.environmentService;
 		if (profileStartup) {
-
-			stopProfiling(profileStartup.dir, profileStartup.prefix).then(() => {
+			this.extensionService.onReady().then(() => stopProfiling(profileStartup.dir, profileStartup.prefix)).then(() => {
 
 				readdir(profileStartup.dir).then(files => {
 					return files.filter(value => value.indexOf(profileStartup.prefix) === 0);
@@ -262,12 +260,12 @@ export class WorkbenchShell {
 						secondaryButton: nls.localize('prof.restart', "Restart")
 					});
 
-					let createIssue = TPromise.as(undefined);
+					let createIssue = TPromise.as<void>(void 0);
 					if (primaryButton) {
 						const action = this.workbench.getInstantiationService().createInstance(ReportPerformanceIssueAction, ReportPerformanceIssueAction.ID, ReportPerformanceIssueAction.LABEL);
 
 						createIssue = action.run(`:warning: Make sure to **attach** these files: :warning:\n${files.map(file => `-\`${join(profileStartup.dir, file)}\``).join('\n')}`).then(() => {
-							return this.windowsService.showItemInFolder(profileStartup.dir);
+							return this.windowsService.showItemInFolder(profileFiles[0]);
 						});
 					}
 					createIssue.then(() => this.windowsService.relaunch({ removeArgs: ['--prof-startup'] }));
@@ -372,7 +370,7 @@ export class WorkbenchShell {
 		this.threadService = instantiationService.createInstance(MainThreadService, extensionHostProcessWorker.messagingProtocol);
 		serviceCollection.set(IThreadService, this.threadService);
 
-		this.timerService.beforeExtensionLoad = new Date();
+		this.timerService.beforeExtensionLoad = Date.now();
 
 		// TODO@Joao: remove
 		const disabledExtensions = SCMPreview.enabled ? [] : ['vscode.git'];
@@ -380,7 +378,7 @@ export class WorkbenchShell {
 		serviceCollection.set(IExtensionService, this.extensionService);
 		extensionHostProcessWorker.start(this.extensionService);
 		this.extensionService.onReady().done(() => {
-			this.timerService.afterExtensionLoad = new Date();
+			this.timerService.afterExtensionLoad = Date.now();
 		});
 
 		this.themeService = instantiationService.createInstance(WorkbenchThemeService, document.body);
@@ -513,8 +511,88 @@ export class WorkbenchShell {
 }
 
 registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
+
+	// Foreground
 	const windowForeground = theme.getColor(foreground);
 	if (windowForeground) {
 		collector.addRule(`.monaco-shell { color: ${windowForeground}; }`);
+	}
+
+	// We need to set the workbench background color so that on Windows we get subpixel-antialiasing.
+	let workbenchBackground: string;
+	switch (theme.type) {
+		case 'dark':
+			workbenchBackground = '#252526';
+			break;
+		case 'light':
+			workbenchBackground = '#F3F3F3';
+			break;
+		default:
+			workbenchBackground = '#000000';
+	}
+	collector.addRule(`.monaco-workbench { background-color: ${workbenchBackground}; }`);
+
+	// Scrollbars
+	const scrollbarShadowColor = theme.getColor(scrollbarShadow);
+	if (scrollbarShadowColor) {
+		collector.addRule(`
+			.monaco-shell .monaco-scrollable-element > .shadow.top {
+				box-shadow: ${scrollbarShadowColor} 0 6px 6px -6px inset;
+			}
+
+			.monaco-shell .monaco-scrollable-element > .shadow.left {
+				box-shadow: ${scrollbarShadowColor} 6px 0 6px -6px inset;
+			}
+
+			.monaco-shell .monaco-scrollable-element > .shadow.top.left {
+				box-shadow: ${scrollbarShadowColor} 6px 6px 6px -6px inset;
+			}
+		`);
+	}
+
+	const scrollbarSliderBackgroundColor = theme.getColor(scrollbarSliderBackground);
+	if (scrollbarSliderBackgroundColor) {
+		collector.addRule(`
+			.monaco-shell .monaco-scrollable-element > .scrollbar > .slider {
+				background: ${scrollbarSliderBackgroundColor};
+			}
+		`);
+	}
+
+	const scrollbarSliderHoverBackgroundColor = theme.getColor(scrollbarSliderHoverBackground);
+	if (scrollbarSliderHoverBackgroundColor) {
+		collector.addRule(`
+			.monaco-shell .monaco-scrollable-element > .scrollbar > .slider:hover {
+				background: ${scrollbarSliderHoverBackgroundColor};
+			}
+		`);
+	}
+
+	const scrollbarSliderActiveBackgroundColor = theme.getColor(scrollbarSliderActiveBackground);
+	if (scrollbarSliderActiveBackgroundColor) {
+		collector.addRule(`
+			.monaco-shell .monaco-scrollable-element > .scrollbar > .slider.active {
+				background: ${scrollbarSliderActiveBackgroundColor};
+			}
+		`);
+	}
+
+	// Focus outline
+	const focusOutline = theme.getColor(focus);
+	if (focusOutline) {
+		collector.addRule(`
+			.monaco-shell [tabindex="0"]:focus,
+			.monaco-shell .synthetic-focus,
+			.monaco-shell select:focus,
+			.monaco-shell .monaco-tree.focused.no-focused-item:focus:before,
+			.monaco-shell input[type="button"]:focus,
+			.monaco-shell input[type="text"]:focus,
+			.monaco-shell button:focus,
+			.monaco-shell textarea:focus,
+			.monaco-shell input[type="search"]:focus,
+			.monaco-shell input[type="checkbox"]:focus {
+				outline-color: ${focusOutline};
+			}
+		`);
 	}
 });

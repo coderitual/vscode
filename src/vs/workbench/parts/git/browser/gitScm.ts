@@ -25,8 +25,8 @@ export class GitSCMProvider implements IWorkbenchContribution, ISCMProvider, ITe
 	get label() { return 'Git'; }
 	get resources() { return []; }
 
-	private _onDidChange = new Emitter<ISCMResourceGroup[]>();
-	get onDidChange(): Event<ISCMResourceGroup[]> {
+	private _onDidChange = new Emitter<void>();
+	get onDidChange(): Event<void> {
 		return this._onDidChange.event;
 	}
 
@@ -105,8 +105,8 @@ export class GitSCMProvider implements IWorkbenchContribution, ISCMProvider, ITe
 		};
 
 		const disposables = [
-			this.gitService.addListener2(ServiceEvents.STATE_CHANGED, triggerModelUpdate),
-			this.gitService.addListener2(ServiceEvents.OPERATION_END, e => {
+			this.gitService.addListener(ServiceEvents.STATE_CHANGED, triggerModelUpdate),
+			this.gitService.addListener(ServiceEvents.OPERATION_END, e => {
 				if (e.operation.id !== ServiceOperations.BACKGROUND_FETCH) {
 					triggerModelUpdate();
 				}

@@ -242,7 +242,7 @@ export abstract class TitleControl extends Themable implements ITitleAreaControl
 		});
 
 		// Action Run Handling
-		this.toUnbind.push(this.editorActionsToolbar.actionRunner.addListener2(BaseEventType.RUN, (e: any) => {
+		this.toUnbind.push(this.editorActionsToolbar.actionRunner.addListener(BaseEventType.RUN, (e: any) => {
 
 			// Check for Error
 			if (e.error && !errors.isPromiseCanceledError(e.error)) {
@@ -325,7 +325,7 @@ export abstract class TitleControl extends Themable implements ITitleAreaControl
 			const titleBarMenu = this.menuService.createMenu(MenuId.EditorTitle, scopedContextKeyService);
 			this.disposeOnEditorActions.push(titleBarMenu, titleBarMenu.onDidChange(_ => this.update()));
 
-			fillInActions(titleBarMenu, this.resourceContext.get(), { primary, secondary });
+			fillInActions(titleBarMenu, { arg: this.resourceContext.get() }, { primary, secondary });
 		}
 
 		return { primary, secondary };
@@ -475,7 +475,7 @@ export abstract class TitleControl extends Themable implements ITitleAreaControl
 		}
 
 		// Fill in contributed actions
-		fillInActions(this.contextMenu, this.resourceContext.get(), actions);
+		fillInActions(this.contextMenu, { arg: this.resourceContext.get() }, actions);
 
 		return actions;
 	}

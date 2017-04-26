@@ -12,7 +12,7 @@ import { TokenizationResult, TokenizationResult2 } from 'vs/editor/common/core/t
 import LanguageFeatureRegistry from 'vs/editor/common/modes/languageFeatureRegistry';
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { Position } from 'vs/editor/common/core/position';
-import { Range } from 'vs/editor/common/core/range';
+import { Range, IRange } from 'vs/editor/common/core/range';
 import Event from 'vs/base/common/event';
 import { TokenizationRegistryImpl } from 'vs/editor/common/modes/tokenizationRegistry';
 import { Color } from 'vs/base/common/color';
@@ -30,12 +30,21 @@ export const enum LanguageId {
  * @internal
  */
 export class LanguageIdentifier {
+
+	/**
+	 * A string identifier. Unique across languages. e.g. 'javascript'.
+	 */
 	public readonly language: string;
+
+	/**
+	 * A numeric identifier. Unique across languages. e.g. 5
+	 * Will vary at runtime based on registration order, etc.
+	 */
 	public readonly id: LanguageId;
 
-	constructor(sid: string, iid: LanguageId) {
-		this.language = sid;
-		this.id = iid;
+	constructor(language: string, id: LanguageId) {
+		this.language = language;
+		this.id = id;
 	}
 }
 
@@ -158,7 +167,7 @@ export interface Hover {
 	 * editor will use the range at the current position or the
 	 * current position itself.
 	 */
-	range: editorCommon.IRange;
+	range: IRange;
 }
 
 /**
@@ -187,6 +196,8 @@ export type SuggestionType = 'method'
 	| 'interface'
 	| 'module'
 	| 'property'
+	| 'event'
+	| 'operator'
 	| 'unit'
 	| 'value'
 	| 'constant'
@@ -199,7 +210,8 @@ export type SuggestionType = 'method'
 	| 'file'
 	| 'reference'
 	| 'customcolor'
-	| 'folder';
+	| 'folder'
+	| 'type-parameter';
 
 /**
  * @internal
@@ -361,7 +373,7 @@ export interface DocumentHighlight {
 	/**
 	 * The range this highlight applies to.
 	 */
-	range: editorCommon.IRange;
+	range: IRange;
 	/**
 	 * The highlight kind, default is [text](#DocumentHighlightKind.Text).
 	 */
@@ -412,7 +424,7 @@ export interface Location {
 	/**
 	 * The document range of this locations.
 	 */
-	range: editorCommon.IRange;
+	range: IRange;
 }
 /**
  * The definition of a symbol represented as one or many [locations](#Location).
@@ -458,30 +470,74 @@ export interface TypeDefinitionProvider {
 /**
  * A symbol kind.
  */
-export type SymbolKind =
-	'file' |
-	'module' |
-	'namespace' |
-	'package' |
-	'class' |
-	'method' |
-	'property' |
-	'field' |
-	'constructor' |
-	'enum' |
-	'interface' |
-	'function' |
-	'variable' |
-	'constant' |
-	'string' |
-	'number' |
-	'boolean' |
-	'array' |
-	'object' |
-	'key' |
-	'null' |
-	'enum-member' |
-	'struct';
+export enum SymbolKind {
+	File = 0,
+	Module = 1,
+	Namespace = 2,
+	Package = 3,
+	Class = 4,
+	Method = 5,
+	Property = 6,
+	Field = 7,
+	Constructor = 8,
+	Enum = 9,
+	Interface = 10,
+	Function = 11,
+	Variable = 12,
+	Constant = 13,
+	String = 14,
+	Number = 15,
+	Boolean = 16,
+	Array = 17,
+	Object = 18,
+	Key = 19,
+	Null = 20,
+	EnumMember = 21,
+	Struct = 22,
+	Event = 23,
+	Operator = 24,
+	TypeParameter = 25
+}
+
+
+/**
+ * @internal
+ */
+export const symbolKindToCssClass = (function () {
+
+	const _fromMapping: { [n: number]: string } = Object.create(null);
+	_fromMapping[SymbolKind.File] = 'file';
+	_fromMapping[SymbolKind.Module] = 'module';
+	_fromMapping[SymbolKind.Namespace] = 'namespace';
+	_fromMapping[SymbolKind.Package] = 'package';
+	_fromMapping[SymbolKind.Class] = 'class';
+	_fromMapping[SymbolKind.Method] = 'method';
+	_fromMapping[SymbolKind.Property] = 'property';
+	_fromMapping[SymbolKind.Field] = 'field';
+	_fromMapping[SymbolKind.Constructor] = 'constructor';
+	_fromMapping[SymbolKind.Enum] = 'enum';
+	_fromMapping[SymbolKind.Interface] = 'interface';
+	_fromMapping[SymbolKind.Function] = 'function';
+	_fromMapping[SymbolKind.Variable] = 'variable';
+	_fromMapping[SymbolKind.Constant] = 'constant';
+	_fromMapping[SymbolKind.String] = 'string';
+	_fromMapping[SymbolKind.Number] = 'number';
+	_fromMapping[SymbolKind.Boolean] = 'boolean';
+	_fromMapping[SymbolKind.Array] = 'array';
+	_fromMapping[SymbolKind.Object] = 'object';
+	_fromMapping[SymbolKind.Key] = 'key';
+	_fromMapping[SymbolKind.Null] = 'null';
+	_fromMapping[SymbolKind.EnumMember] = 'enum-member';
+	_fromMapping[SymbolKind.Struct] = 'struct';
+	_fromMapping[SymbolKind.Event] = 'event';
+	_fromMapping[SymbolKind.Operator] = 'operator';
+	_fromMapping[SymbolKind.TypeParameter] = 'type-parameter';
+
+	return function toCssClassName(kind: SymbolKind): string {
+		return _fromMapping[kind] || 'property';
+	};
+})();
+
 
 /**
  * Represents information about programming constructs like variables, classes,
@@ -516,6 +572,12 @@ export interface DocumentSymbolProvider {
 	provideDocumentSymbols(model: editorCommon.IReadOnlyModel, token: CancellationToken): SymbolInformation[] | Thenable<SymbolInformation[]>;
 }
 
+export interface TextEdit {
+	range: IRange;
+	text: string;
+	eol?: editorCommon.EndOfLineSequence;
+}
+
 /**
  * Interface used to format a model
  */
@@ -537,7 +599,7 @@ export interface DocumentFormattingEditProvider {
 	/**
 	 * Provide formatting edits for a whole document.
 	 */
-	provideDocumentFormattingEdits(model: editorCommon.IReadOnlyModel, options: FormattingOptions, token: CancellationToken): editorCommon.ISingleEditOperation[] | Thenable<editorCommon.ISingleEditOperation[]>;
+	provideDocumentFormattingEdits(model: editorCommon.IReadOnlyModel, options: FormattingOptions, token: CancellationToken): TextEdit[] | Thenable<TextEdit[]>;
 }
 /**
  * The document formatting provider interface defines the contract between extensions and
@@ -551,7 +613,7 @@ export interface DocumentRangeFormattingEditProvider {
 	 * or larger range. Often this is done by adjusting the start and end
 	 * of the range to full syntax nodes.
 	 */
-	provideDocumentRangeFormattingEdits(model: editorCommon.IReadOnlyModel, range: Range, options: FormattingOptions, token: CancellationToken): editorCommon.ISingleEditOperation[] | Thenable<editorCommon.ISingleEditOperation[]>;
+	provideDocumentRangeFormattingEdits(model: editorCommon.IReadOnlyModel, range: Range, options: FormattingOptions, token: CancellationToken): TextEdit[] | Thenable<TextEdit[]>;
 }
 /**
  * The document formatting provider interface defines the contract between extensions and
@@ -566,7 +628,7 @@ export interface OnTypeFormattingEditProvider {
 	 * what range the position to expand to, like find the matching `{`
 	 * when `}` has been entered.
 	 */
-	provideOnTypeFormattingEdits(model: editorCommon.IReadOnlyModel, position: Position, ch: string, options: FormattingOptions, token: CancellationToken): editorCommon.ISingleEditOperation[] | Thenable<editorCommon.ISingleEditOperation[]>;
+	provideOnTypeFormattingEdits(model: editorCommon.IReadOnlyModel, position: Position, ch: string, options: FormattingOptions, token: CancellationToken): TextEdit[] | Thenable<TextEdit[]>;
 }
 
 /**
@@ -574,14 +636,14 @@ export interface OnTypeFormattingEditProvider {
  */
 export interface IInplaceReplaceSupportResult {
 	value: string;
-	range: editorCommon.IRange;
+	range: IRange;
 }
 
 /**
  * A link inside the editor.
  */
 export interface ILink {
-	range: editorCommon.IRange;
+	range: IRange;
 	url: string;
 }
 /**
@@ -595,7 +657,7 @@ export interface LinkProvider {
 
 export interface IResourceEdit {
 	resource: URI;
-	range: editorCommon.IRange;
+	range: IRange;
 	newText: string;
 }
 export interface WorkspaceEdit {
@@ -610,10 +672,11 @@ export interface RenameProvider {
 export interface Command {
 	id: string;
 	title: string;
+	tooltip?: string;
 	arguments?: any[];
 }
 export interface ICodeLensSymbol {
-	range: editorCommon.IRange;
+	range: IRange;
 	id?: string;
 	command?: Command;
 }

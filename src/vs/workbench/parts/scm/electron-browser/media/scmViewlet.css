@@ -4,9 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 .monaco-workbench > .activitybar > .content .monaco-action-bar .action-label.scm {
-	background-image: url('icon.svg');
-	background-size: 26px;
-	background-position: center;
+	-webkit-mask: url('icon-dark.svg') no-repeat 50% 50%;
+	-webkit-mask-size: 19px;
 }
 
 .scm-viewlet .monaco-list-row {
@@ -64,6 +63,7 @@
 	display: none;
 }
 
+.scm-viewlet .monaco-list .monaco-list-row.selected > .resource-group > .actions,
 .scm-viewlet .monaco-list .monaco-list-row.selected > .resource > .actions,
 .scm-viewlet .monaco-list:not(.selection-multiple) .monaco-list-row > .resource:hover > .actions {
 	display: block;

@@ -5,7 +5,6 @@
 
 import { TPromise } from 'vs/base/common/winjs.base';
 import * as nls from 'vs/nls';
-import * as DOM from 'vs/base/browser/dom';
 import { Delayer } from 'vs/base/common/async';
 import { Disposable, IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { flatten, distinct } from 'vs/base/common/arrays';
@@ -15,12 +14,12 @@ import { IJSONSchema } from 'vs/base/common/jsonSchema';
 import Event, { Emitter } from 'vs/base/common/event';
 import { Registry } from 'vs/platform/platform';
 import * as editorCommon from 'vs/editor/common/editorCommon';
-import { Range } from 'vs/editor/common/core/range';
+import { Range, IRange } from 'vs/editor/common/core/range';
 import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from 'vs/platform/configuration/common/configurationRegistry';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IPreferencesService, ISettingsGroup, ISetting, IPreferencesEditorModel, IFilterResult, ISettingsEditorModel } from 'vs/workbench/parts/preferences/common/preferences';
 import { SettingsEditorModel, DefaultSettingsEditorModel } from 'vs/workbench/parts/preferences/common/preferencesModels';
-import { ICodeEditor, IEditorMouseEvent } from 'vs/editor/browser/editorBrowser';
+import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import { IContextMenuService, ContextSubMenu } from 'vs/platform/contextview/browser/contextView';
 import { SettingsGroupTitleWidget, EditPreferenceWidget } from 'vs/workbench/parts/preferences/browser/preferencesWidgets';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
@@ -32,6 +31,7 @@ import { IMarkerService, IMarkerData } from 'vs/platform/markers/common/markers'
 import { IWorkspaceConfigurationService } from 'vs/workbench/services/configuration/common/configuration';
 import { IMessageService, Severity } from 'vs/platform/message/common/message';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { ICursorPositionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 
 export interface IPreferencesRenderer<T> extends IDisposable {
 	preferencesModel: IPreferencesEditorModel<T>;
@@ -82,7 +82,7 @@ export class UserSettingsRenderer extends Disposable implements IPreferencesRend
 		this.settingHighlighter = this._register(instantiationService.createInstance(SettingHighlighter, editor, this._onFocusPreference, this._onClearFocusPreference));
 		this.highlightPreferencesRenderer = this._register(instantiationService.createInstance(HighlightPreferencesRenderer, editor));
 		this.editSettingActionRenderer = this._register(this.instantiationService.createInstance(EditSettingRenderer, this.editor, this.preferencesModel, this.settingHighlighter));
-		this._register(this.editSettingActionRenderer.onUpdateSetting(({key, value, source}) => this.updatePreference(key, value, source)));
+		this._register(this.editSettingActionRenderer.onUpdateSetting(({ key, value, source }) => this.updatePreference(key, value, source)));
 		this._register(this.editor.getModel().onDidChangeContent(() => this.modelChangeDelayer.trigger(() => this.onModelChanged())));
 	}
 
@@ -123,7 +123,7 @@ export class UserSettingsRenderer extends Disposable implements IPreferencesRend
 	}
 
 	private getSetting(setting: ISetting): ISetting {
-		const {key, overrideOf} = setting;
+		const { key, overrideOf } = setting;
 		if (overrideOf) {
 			const setting = this.getSetting(overrideOf);
 			for (const override of setting.overrides) {
@@ -286,7 +286,7 @@ export class DefaultSettingsRenderer extends Disposable implements IPreferencesR
 }
 
 export interface HiddenAreasProvider {
-	hiddenAreas: editorCommon.IRange[];
+	hiddenAreas: IRange[];
 }
 
 export class StaticContentHidingRenderer extends Disposable implements HiddenAreasProvider {
@@ -296,7 +296,7 @@ export class StaticContentHidingRenderer extends Disposable implements HiddenAre
 		super();
 	}
 
-	get hiddenAreas(): editorCommon.IRange[] {
+	get hiddenAreas(): IRange[] {
 		const model = this.editor.getModel();
 		return [
 			{
@@ -338,8 +338,8 @@ export class SettingsGroupTitleRenderer extends Disposable implements HiddenArea
 		super();
 	}
 
-	public get hiddenAreas(): editorCommon.IRange[] {
-		const hiddenAreas: editorCommon.IRange[] = [];
+	public get hiddenAreas(): IRange[] {
+		const hiddenAreas: IRange[] = [];
 		for (const group of this.hiddenGroups) {
 			hiddenAreas.push(group.range);
 		}
@@ -420,7 +420,7 @@ export class HiddenAreasRenderer extends Disposable {
 	}
 
 	public render() {
-		const ranges: editorCommon.IRange[] = [];
+		const ranges: IRange[] = [];
 		for (const hiddenAreaProvider of this.hiddenAreasProviders) {
 			ranges.push(...hiddenAreaProvider.hiddenAreas);
 		}
@@ -436,7 +436,7 @@ export class HiddenAreasRenderer extends Disposable {
 export class FilteredMatchesRenderer extends Disposable implements HiddenAreasProvider {
 
 	private decorationIds: string[] = [];
-	public hiddenAreas: editorCommon.IRange[] = [];
+	public hiddenAreas: IRange[] = [];
 
 	constructor(private editor: ICodeEditor,
 		@IInstantiationService private instantiationService: IInstantiationService
@@ -458,7 +458,7 @@ export class FilteredMatchesRenderer extends Disposable implements HiddenAreasPr
 		}
 	}
 
-	private createDecoration(range: editorCommon.IRange, model: editorCommon.IModel): editorCommon.IModelDeltaDecoration {
+	private createDecoration(range: IRange, model: editorCommon.IModel): editorCommon.IModelDeltaDecoration {
 		return {
 			range,
 			options: {
@@ -468,8 +468,8 @@ export class FilteredMatchesRenderer extends Disposable implements HiddenAreasPr
 		};
 	}
 
-	private computeHiddenRanges(filteredGroups: ISettingsGroup[], allSettingsGroups: ISettingsGroup[], model: editorCommon.IModel): editorCommon.IRange[] {
-		const notMatchesRanges: editorCommon.IRange[] = [];
+	private computeHiddenRanges(filteredGroups: ISettingsGroup[], allSettingsGroups: ISettingsGroup[], model: editorCommon.IModel): IRange[] {
+		const notMatchesRanges: IRange[] = [];
 		for (const group of allSettingsGroups) {
 			const filteredGroup = filteredGroups.filter(g => g.title === group.title)[0];
 			if (!filteredGroup) {
@@ -516,7 +516,7 @@ export class FilteredMatchesRenderer extends Disposable implements HiddenAreasPr
 		return false;
 	}
 
-	private createCompleteRange(range: editorCommon.IRange, model: editorCommon.IModel): editorCommon.IRange {
+	private createCompleteRange(range: IRange, model: editorCommon.IModel): IRange {
 		return {
 			startLineNumber: range.startLineNumber,
 			startColumn: model.getLineMinColumn(range.startLineNumber),
@@ -557,7 +557,7 @@ export class HighlightPreferencesRenderer extends Disposable {
 		}
 	}
 
-	private createDecoration(range: editorCommon.IRange, model: editorCommon.IModel): editorCommon.IModelDeltaDecoration {
+	private createDecoration(range: IRange, model: editorCommon.IModel): editorCommon.IModelDeltaDecoration {
 		return {
 			range,
 			options: {
@@ -645,11 +645,8 @@ class EditSettingRenderer extends Disposable {
 		this.editPreferenceWidgetForMouseMove = this._register(this.instantiationService.createInstance(EditPreferenceWidget, editor));
 		this.toggleEditPreferencesForMouseMoveDelayer = new Delayer<void>(75);
 
-		this._register(this.editPreferenceWidgetForCusorPosition.onClick(setting => this.onEditSettingClicked(this.editPreferenceWidgetForCusorPosition)));
-		this._register(this.editPreferenceWidgetForMouseMove.onClick(setting => this.onEditSettingClicked(this.editPreferenceWidgetForMouseMove)));
-
-		this._register(this.editPreferenceWidgetForCusorPosition.onMouseOver(setting => this.onMouseOver(this.editPreferenceWidgetForCusorPosition)));
-		this._register(this.editPreferenceWidgetForMouseMove.onMouseOver(setting => this.onMouseOver(this.editPreferenceWidgetForMouseMove)));
+		this._register(this.editPreferenceWidgetForCusorPosition.onClick(e => this.onEditSettingClicked(this.editPreferenceWidgetForCusorPosition, e)));
+		this._register(this.editPreferenceWidgetForMouseMove.onClick(e => this.onEditSettingClicked(this.editPreferenceWidgetForMouseMove, e)));
 
 		this._register(this.editor.onDidChangeCursorPosition(positionChangeEvent => this.onPositionChanged(positionChangeEvent)));
 		this._register(this.editor.onMouseMove(mouseMoveEvent => this.onMouseMoved(mouseMoveEvent)));
@@ -679,7 +676,7 @@ class EditSettingRenderer extends Disposable {
 		}
 	}
 
-	private onPositionChanged(positionChangeEvent: editorCommon.ICursorPositionChangedEvent) {
+	private onPositionChanged(positionChangeEvent: ICursorPositionChangedEvent) {
 		this.editPreferenceWidgetForMouseMove.hide();
 		const settings = this.getSettings(positionChangeEvent.position.lineNumber);
 		if (settings.length) {
@@ -700,11 +697,14 @@ class EditSettingRenderer extends Disposable {
 	}
 
 	private getEditPreferenceWidgetUnderMouse(mouseMoveEvent: IEditorMouseEvent): EditPreferenceWidget<ISetting> {
-		if (mouseMoveEvent.event.target === this.editPreferenceWidgetForMouseMove.getDomNode()) {
-			return this.editPreferenceWidgetForMouseMove;
-		}
-		if (mouseMoveEvent.event.target === this.editPreferenceWidgetForCusorPosition.getDomNode()) {
-			return this.editPreferenceWidgetForCusorPosition;
+		if (mouseMoveEvent.target.type === MouseTargetType.GUTTER_GLYPH_MARGIN) {
+			const line = mouseMoveEvent.target.position.lineNumber;
+			if (this.editPreferenceWidgetForMouseMove.getLine() === line && this.editPreferenceWidgetForMouseMove.isVisible()) {
+				return this.editPreferenceWidgetForMouseMove;
+			}
+			if (this.editPreferenceWidgetForCusorPosition.getLine() === line && this.editPreferenceWidgetForCusorPosition.isVisible()) {
+				return this.editPreferenceWidgetForCusorPosition;
+			}
 		}
 		return null;
 	}
@@ -719,12 +719,24 @@ class EditSettingRenderer extends Disposable {
 	}
 
 	private showEditPreferencesWidget(editPreferencesWidget: EditPreferenceWidget<ISetting>, settings: ISetting[]) {
-		if (this.editor.getRawConfiguration().glyphMargin) {
-			editPreferencesWidget.show(settings[0].valueRange.startLineNumber, settings);
-			editPreferencesWidget.getDomNode().title = nls.localize('editTtile', "Edit");
+		const line = settings[0].valueRange.startLineNumber;
+		if (this.editor.getRawConfiguration().glyphMargin && this.marginFreeFromOtherDecorations(line)) {
+			editPreferencesWidget.show(line, nls.localize('editTtile', "Edit"), settings);
 			const editPreferenceWidgetToHide = editPreferencesWidget === this.editPreferenceWidgetForCusorPosition ? this.editPreferenceWidgetForMouseMove : this.editPreferenceWidgetForCusorPosition;
 			editPreferenceWidgetToHide.hide();
 		}
+	}
+
+	private marginFreeFromOtherDecorations(line: number): boolean {
+		const decorations = this.editor.getLineDecorations(line);
+		if (decorations) {
+			for (const { options } of decorations) {
+				if (options.glyphMarginClassName && options.glyphMarginClassName.indexOf(EditPreferenceWidget.GLYPH_MARGIN_CLASS_NAME) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	private getSettings(lineNumber: number): ISetting[] {
@@ -770,9 +782,8 @@ class EditSettingRenderer extends Disposable {
 		this.settingHighlighter.highlight(editPreferenceWidget.preferences[0]);
 	}
 
-	private onEditSettingClicked(editPreferenceWidget: EditPreferenceWidget<ISetting>): void {
-		const elementPosition = DOM.getDomNodePagePosition(editPreferenceWidget.getDomNode());
-		const anchor = { x: elementPosition.left + elementPosition.width, y: elementPosition.top + elementPosition.height + 10 };
+	private onEditSettingClicked(editPreferenceWidget: EditPreferenceWidget<ISetting>, e: IEditorMouseEvent): void {
+		const anchor = { x: e.event.posx + 1, y: e.event.posy + 10 };
 		const actions = this.getSettings(editPreferenceWidget.getLine()).length === 1 ? this.getActions(editPreferenceWidget.preferences[0], this.getConfigurationsMap()[editPreferenceWidget.preferences[0].key])
 			: editPreferenceWidget.preferences.map(setting => new ContextSubMenu(setting.key, this.getActions(setting, this.getConfigurationsMap()[setting.key])));
 		this.contextMenuService.showContextMenu({

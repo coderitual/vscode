@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import { Emitter } from 'vs/base/common/event';
+import { Emitter, mapEvent } from 'vs/base/common/event';
 import { TrieMap } from 'vs/base/common/map';
 import { score } from 'vs/editor/common/modes/languageSelector';
 import * as Platform from 'vs/base/common/platform';
@@ -18,7 +18,7 @@ import { ExtHostDocuments } from 'vs/workbench/api/node/extHostDocuments';
 import { ExtHostDocumentSaveParticipant } from 'vs/workbench/api/node/extHostDocumentSaveParticipant';
 import { ExtHostConfiguration } from 'vs/workbench/api/node/extHostConfiguration';
 import { ExtHostDiagnostics } from 'vs/workbench/api/node/extHostDiagnostics';
-import { ExtHostTreeExplorers } from 'vs/workbench/api/node/extHostTreeExplorers';
+import { ExtHostTreeView } from 'vs/workbench/api/node/extHostTreeView';
 import { ExtHostWorkspace } from 'vs/workbench/api/node/extHostWorkspace';
 import { ExtHostQuickOpen } from 'vs/workbench/api/node/extHostQuickOpen';
 import { ExtHostProgress } from 'vs/workbench/api/node/extHostProgress';
@@ -42,12 +42,14 @@ import { IExtensionDescription } from 'vs/platform/extensions/common/extensions'
 import { ExtHostExtensionService } from 'vs/workbench/api/node/extHostExtensionService';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { CancellationTokenSource } from 'vs/base/common/cancellation';
 import * as vscode from 'vscode';
 import * as paths from 'vs/base/common/paths';
 import { realpath } from 'fs';
 import { MainContext, ExtHostContext, InstanceCollection, IInitData } from './extHost.protocol';
 import * as languageConfiguration from 'vs/editor/common/modes/languageConfiguration';
+import { TextEditorCursorStyle } from 'vs/editor/common/config/editorOptions';
 
 export interface IExtensionApiFactory {
 	(extension: IExtensionDescription): typeof vscode;
@@ -93,7 +95,13 @@ function proposed(extension: IExtensionDescription): Function {
 /**
  * This method instantiates and returns the extension API surface
  */
-export function createApiFactory(initData: IInitData, threadService: IThreadService, extensionService: ExtHostExtensionService, contextService: IWorkspaceContextService): IExtensionApiFactory {
+export function createApiFactory(
+	initData: IInitData,
+	threadService: IThreadService,
+	extensionService: ExtHostExtensionService,
+	contextService: IWorkspaceContextService,
+	telemetryService: ITelemetryService
+): IExtensionApiFactory {
 
 	// Addressable instances
 	const col = new InstanceCollection();
@@ -103,14 +111,14 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 	const extHostDocumentSaveParticipant = col.define(ExtHostContext.ExtHostDocumentSaveParticipant).set<ExtHostDocumentSaveParticipant>(new ExtHostDocumentSaveParticipant(extHostDocuments, threadService.get(MainContext.MainThreadWorkspace)));
 	const extHostEditors = col.define(ExtHostContext.ExtHostEditors).set<ExtHostEditors>(new ExtHostEditors(threadService, extHostDocumentsAndEditors));
 	const extHostCommands = col.define(ExtHostContext.ExtHostCommands).set<ExtHostCommands>(new ExtHostCommands(threadService, extHostHeapService));
-	const extHostExplorers = col.define(ExtHostContext.ExtHostExplorers).set<ExtHostTreeExplorers>(new ExtHostTreeExplorers(threadService, extHostCommands));
+	const extHostTreeView = col.define(ExtHostContext.ExtHostTreeView).set<ExtHostTreeView>(new ExtHostTreeView(threadService, extHostCommands));
 	const extHostConfiguration = col.define(ExtHostContext.ExtHostConfiguration).set<ExtHostConfiguration>(new ExtHostConfiguration(threadService.get(MainContext.MainThreadConfiguration), initData.configuration));
 	const extHostDiagnostics = col.define(ExtHostContext.ExtHostDiagnostics).set<ExtHostDiagnostics>(new ExtHostDiagnostics(threadService));
 	const languageFeatures = col.define(ExtHostContext.ExtHostLanguageFeatures).set<ExtHostLanguageFeatures>(new ExtHostLanguageFeatures(threadService, extHostDocuments, extHostCommands, extHostHeapService, extHostDiagnostics));
 	const extHostFileSystemEvent = col.define(ExtHostContext.ExtHostFileSystemEventService).set<ExtHostFileSystemEventService>(new ExtHostFileSystemEventService());
 	const extHostQuickOpen = col.define(ExtHostContext.ExtHostQuickOpen).set<ExtHostQuickOpen>(new ExtHostQuickOpen(threadService));
 	const extHostTerminalService = col.define(ExtHostContext.ExtHostTerminalService).set<ExtHostTerminalService>(new ExtHostTerminalService(threadService));
-	const extHostSCM = col.define(ExtHostContext.ExtHostSCM).set<ExtHostSCM>(new ExtHostSCM(threadService));
+	const extHostSCM = col.define(ExtHostContext.ExtHostSCM).set<ExtHostSCM>(new ExtHostSCM(threadService, extHostCommands));
 	const extHostTask = col.define(ExtHostContext.ExtHostTask).set<ExtHostTask>(new ExtHostTask(threadService));
 	col.define(ExtHostContext.ExtHostExtensionService).set(extensionService);
 	col.finish(false, threadService);
@@ -183,7 +191,7 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 			}
 
 			executeCommand<T>(id: string, ...args: any[]): Thenable<T> {
-				return extHostCommands.executeCommand(id, ...args);
+				return extHostCommands.executeCommand<T>(id, ...args);
 			}
 
 			getCommands(filterInternal: boolean = false): Thenable<string[]> {
@@ -291,8 +299,8 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 			get visibleTextEditors() {
 				return extHostEditors.getVisibleTextEditors();
 			},
-			showTextDocument(document: vscode.TextDocument, column?: vscode.ViewColumn, preserveFocus?: boolean): TPromise<vscode.TextEditor> {
-				return extHostEditors.showTextDocument(document, column, preserveFocus);
+			showTextDocument(document: vscode.TextDocument, columnOrOptions?: vscode.ViewColumn | vscode.TextDocumentShowOptions, preserveFocus?: boolean): TPromise<vscode.TextEditor> {
+				return extHostEditors.showTextDocument(document, columnOrOptions, preserveFocus);
 			},
 			createTextEditorDecorationType(options: vscode.DecorationRenderOptions): vscode.TextEditorDecorationType {
 				return extHostEditors.createTextEditorDecorationType(options);
@@ -336,12 +344,13 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 			setStatusBarMessage(text: string, timeoutOrThenable?: number | Thenable<any>): vscode.Disposable {
 				return extHostStatusBar.setStatusBarMessage(text, timeoutOrThenable);
 			},
-			withWindowProgress: proposedApiFunction(extension, <R>(title: string, task: (progress: vscode.Progress<string>, token: vscode.CancellationToken) => Thenable<R>): Thenable<R> => {
-				return extHostProgress.withWindowProgress(extension, title, task);
-			}),
-			withScmProgress: proposedApiFunction(extension, <R>(task: (progress: vscode.Progress<number>) => Thenable<R>) => {
-				return extHostProgress.withScmProgress(extension, task);
-			}),
+			withScmProgress<R>(task: (progress: vscode.Progress<number>) => Thenable<R>) {
+				console.warn(`[Deprecation Warning] function 'withScmProgress' is deprecated and should no longer be used. Use 'withProgress' instead.`);
+				return extHostProgress.withProgress(extension, { location: extHostTypes.ProgressLocation.SourceControl }, task);
+			},
+			withProgress<R>(options: vscode.ProgressOptions, task: (progress: vscode.Progress<{ message?: string; percentage?: number }>) => Thenable<R>) {
+				return extHostProgress.withProgress(extension, options, task);
+			},
 			createOutputChannel(name: string): vscode.OutputChannel {
 				return extHostOutputService.createOutputChannel(name);
 			},
@@ -355,9 +364,9 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 			sampleFunction: proposedApiFunction(extension, () => {
 				return extHostMessageService.showMessage(Severity.Info, 'Hello Proposed Api!', {}, []);
 			}),
-			registerTreeExplorerNodeProvider: proposedApiFunction(extension, (providerId: string, provider: vscode.TreeExplorerNodeProvider<any>) => {
-				return extHostExplorers.registerTreeExplorerNodeProvider(providerId, provider);
-			}),
+			createTreeView: proposedApiFunction(extension, (providerId: string, provider: vscode.TreeDataProvider<any>): vscode.TreeView<any> => {
+				return extHostTreeView.createTreeView(providerId, provider);
+			})
 		};
 
 		// namespace: workspace
@@ -441,24 +450,30 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 
 		class SCM {
 
-			@proposed(extension)
-			get activeProvider() {
+			get activeSourceControl() {
 				return extHostSCM.activeProvider;
 			}
 
-			@proposed(extension)
-			get onDidChangeActiveProvider() {
+			get onDidChangeActiveSourceControl() {
 				return extHostSCM.onDidChangeActiveProvider;
 			}
 
-			@proposed(extension)
 			get inputBox() {
 				return extHostSCM.inputBox;
 			}
 
-			@proposed(extension)
-			registerSCMProvider(provider) {
-				return extHostSCM.registerSCMProvider(provider);
+			get onDidAcceptInputValue() {
+				return mapEvent(extHostSCM.inputBox.onDidAccept, () => extHostSCM.inputBox);
+			}
+
+			createSourceControl(id: string, label: string) {
+				telemetryService.publicLog('registerSCMProvider', {
+					extensionId: extension.id,
+					providerId: id,
+					providerLabel: label
+				});
+
+				return extHostSCM.createSourceControl(id, label);
 			}
 		}
 
@@ -505,17 +520,19 @@ export function createApiFactory(initData: IInitData, threadService: IThreadServ
 			SymbolKind: extHostTypes.SymbolKind,
 			TextDocumentSaveReason: extHostTypes.TextDocumentSaveReason,
 			TextEdit: extHostTypes.TextEdit,
-			TextEditorCursorStyle: EditorCommon.TextEditorCursorStyle,
+			TextEditorCursorStyle: TextEditorCursorStyle,
 			TextEditorLineNumbersStyle: extHostTypes.TextEditorLineNumbersStyle,
 			TextEditorRevealType: extHostTypes.TextEditorRevealType,
 			TextEditorSelectionChangeKind: extHostTypes.TextEditorSelectionChangeKind,
 			Uri: URI,
 			ViewColumn: extHostTypes.ViewColumn,
 			WorkspaceEdit: extHostTypes.WorkspaceEdit,
+			ProgressLocation: extHostTypes.ProgressLocation,
 			// functions
 			FileLocationKind: extHostTypes.FileLocationKind,
 			ApplyToKind: extHostTypes.ApplyToKind,
 			RevealKind: extHostTypes.RevealKind,
+			TaskGroup: extHostTypes.TaskGroup,
 			ShellTask: extHostTypes.ShellTask,
 			ProcessTask: extHostTypes.ProcessTask
 		};

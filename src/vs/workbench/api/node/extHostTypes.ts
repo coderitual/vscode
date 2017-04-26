@@ -399,6 +399,11 @@ export class Selection extends Range {
 	}
 }
 
+export enum EndOfLine {
+	LF = 1,
+	CRLF = 2
+}
+
 export class TextEdit {
 
 	static isTextEdit(thing: any): thing is TextEdit {
@@ -424,16 +429,22 @@ export class TextEdit {
 		return TextEdit.replace(range, '');
 	}
 
-	protected _range: Range;
+	static setEndOfLine(eol: EndOfLine): TextEdit {
+		let ret = new TextEdit(undefined, undefined);
+		ret.newEol = eol;
+		return ret;
+	}
 
+	protected _range: Range;
 	protected _newText: string;
+	protected _newEol: EndOfLine;
 
 	get range(): Range {
 		return this._range;
 	}
 
 	set range(value: Range) {
-		if (!value) {
+		if (value && !Range.isRange(value)) {
 			throw illegalArgument('range');
 		}
 		this._range = value;
@@ -443,8 +454,22 @@ export class TextEdit {
 		return this._newText || '';
 	}
 
-	set newText(value) {
+	set newText(value: string) {
+		if (value && typeof value !== 'string') {
+			throw illegalArgument('newText');
+		}
 		this._newText = value;
+	}
+
+	get newEol(): EndOfLine {
+		return this._newEol;
+	}
+
+	set newEol(value: EndOfLine) {
+		if (value && typeof value !== 'number') {
+			throw illegalArgument('newEol');
+		}
+		this._newEol = value;
 	}
 
 	constructor(range: Range, newText: string) {
@@ -455,7 +480,8 @@ export class TextEdit {
 	toJSON(): any {
 		return {
 			range: this.range,
-			newText: this.newText
+			newText: this.newText,
+			newEol: this._newEol
 		};
 	}
 }
@@ -735,7 +761,10 @@ export enum SymbolKind {
 	Key = 19,
 	Null = 20,
 	EnumMember = 21,
-	Struct = 22
+	Struct = 22,
+	Event = 23,
+	Operator = 24,
+	TypeParameter = 25
 }
 
 export class SymbolInformation {
@@ -846,7 +875,10 @@ export enum CompletionItemKind {
 	Folder = 18,
 	EnumMember = 19,
 	Constant = 20,
-	Struct = 21
+	Struct = 21,
+	Event = 22,
+	Operator = 23,
+	TypeParameter = 24
 }
 
 export class CompletionItem {
@@ -903,11 +935,6 @@ export enum ViewColumn {
 export enum StatusBarAlignment {
 	Left = 1,
 	Right = 2
-}
-
-export enum EndOfLine {
-	LF = 1,
-	CRLF = 2
 }
 
 export enum TextEditorLineNumbersStyle {
@@ -1012,8 +1039,11 @@ export class BaseTask {
 	}
 
 	set identifier(value: string) {
-		if (typeof name !== 'string') {
+		if (typeof value !== 'string') {
 			throw illegalArgument('identifier');
+		}
+		if (value.indexOf(':') !== -1) {
+			throw illegalArgument('identifier must not contain \':\'');
 		}
 		this._identifier = value;
 	}
@@ -1063,11 +1093,37 @@ namespace ProblemMatcher {
 	}
 }
 
+export namespace TaskGroup {
+	/**
+	 * The clean task group
+	 */
+	export const Clean: 'clean' = 'clean';
+
+	/**
+	 * The build task group
+	 */
+	export const Build: 'build' = 'build';
+
+	/**
+	 * The rebuild all task group
+	 */
+	export const RebuildAll: 'rebuildAll' = 'rebuildAll';
+
+	/**
+	 * The test task group
+	 */
+	export const Test: 'test' = 'test';
+
+	export function is(value: string): value is vscode.TaskGroup {
+		return value === Clean || value === Build || value === RebuildAll || value === Test;
+	}
+}
 
 export class ProcessTask extends BaseTask {
 
 	private _process: string;
 	private _args: string[];
+	private _group: vscode.TaskGroup;
 	private _options: vscode.ProcessOptions;
 
 	private static parseArguments(restArgs: any[]): { args: string[]; options: vscode.ProcessOptions; problemMatchers: vscode.ProblemMatcher[] } {
@@ -1124,6 +1180,17 @@ export class ProcessTask extends BaseTask {
 		this._args = value;
 	}
 
+	get group(): vscode.TaskGroup {
+		return this._group;
+	}
+
+	set group(value: vscode.TaskGroup) {
+		if (!TaskGroup.is(value)) {
+			throw illegalArgument('group');
+		}
+		this._group = value;
+	}
+
 	get options(): vscode.ProcessOptions {
 		return this._options;
 	}
@@ -1139,6 +1206,7 @@ export class ProcessTask extends BaseTask {
 export class ShellTask extends BaseTask {
 
 	private _commandLine: string;
+	private _group: vscode.TaskGroup;
 	private _options: vscode.ShellOptions;
 
 	private static parseArguments(restArgs: any[]): { options: vscode.ShellOptions; problemMatchers: vscode.ProblemMatcher[] } {
@@ -1176,6 +1244,17 @@ export class ShellTask extends BaseTask {
 		return this._commandLine;
 	}
 
+	get group(): vscode.TaskGroup {
+		return this._group;
+	}
+
+	set group(value: vscode.TaskGroup) {
+		if (!TaskGroup.is(value)) {
+			throw illegalArgument('group');
+		}
+		this._group = value;
+	}
+
 	get options(): vscode.ShellOptions {
 		return this._options;
 	}
@@ -1186,4 +1265,9 @@ export class ShellTask extends BaseTask {
 		}
 		this._options = value;
 	}
+}
+
+export enum ProgressLocation {
+	SourceControl = 1,
+	Window = 10,
 }

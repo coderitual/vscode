@@ -11,7 +11,7 @@ import { ViewContext } from 'vs/editor/common/view/viewContext';
 import { RenderingContext } from 'vs/editor/common/view/renderingContext';
 import * as viewEvents from 'vs/editor/common/view/viewEvents';
 import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
-import { editorGuide } from 'vs/editor/common/view/editorColorRegistry';
+import { editorIndentGuides } from 'vs/editor/common/view/editorColorRegistry';
 
 export class IndentGuidesOverlay extends DynamicViewOverlay {
 
@@ -36,6 +36,7 @@ export class IndentGuidesOverlay extends DynamicViewOverlay {
 		this._context.removeEventHandler(this);
 		this._context = null;
 		this._renderResult = null;
+		super.dispose();
 	}
 
 	// --- begin event handlers
@@ -115,7 +116,7 @@ export class IndentGuidesOverlay extends DynamicViewOverlay {
 }
 
 registerThemingParticipant((theme, collector) => {
-	let editorGuideColor = theme.getColor(editorGuide);
+	let editorGuideColor = theme.getColor(editorIndentGuides);
 	if (editorGuideColor) {
 		collector.addRule(`.monaco-editor.${theme.selector} .lines-content .cigr { background-color: ${editorGuideColor}; }`);
 	}

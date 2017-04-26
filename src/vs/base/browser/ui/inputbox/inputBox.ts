@@ -18,6 +18,7 @@ import { IContextViewProvider, AnchorAlignment } from 'vs/base/browser/ui/contex
 import Event, { Emitter } from 'vs/base/common/event';
 import { Widget } from 'vs/base/browser/ui/widget';
 import { Color } from 'vs/base/common/color';
+import { mixin } from 'vs/base/common/objects';
 
 const $ = dom.$;
 
@@ -34,6 +35,12 @@ export interface IInputBoxStyles {
 	inputBackground?: Color;
 	inputForeground?: Color;
 	inputBorder?: Color;
+	infoBorder?: Color;
+	infoBackground?: Color;
+	warningBorder?: Color;
+	warningBackground?: Color;
+	errorBorder?: Color;
+	errorBackground?: Color;
 }
 
 export interface IInputValidator {
@@ -62,6 +69,17 @@ export interface IRange {
 	end: number;
 }
 
+const defaultOpts = {
+	inputBackground: Color.fromHex('#3C3C3C'),
+	inputForeground: Color.fromHex('#CCCCCC'),
+	infoBorder: Color.fromHex('#55AAFF'),
+	infoBackground: Color.fromHex('#063B49'),
+	warningBorder: Color.fromHex('#B89500'),
+	warningBackground: Color.fromHex('#352A05'),
+	errorBorder: Color.fromHex('#BE1100'),
+	errorBackground: Color.fromHex('#5A1D1D')
+};
+
 export class InputBox extends Widget {
 	private contextViewProvider: IContextViewProvider;
 	private element: HTMLElement;
@@ -81,6 +99,13 @@ export class InputBox extends Widget {
 	private inputForeground: Color;
 	private inputBorder: Color;
 
+	private infoBorder: Color;
+	private infoBackground: Color;
+	private warningBorder: Color;
+	private warningBackground: Color;
+	private errorBorder: Color;
+	private errorBackground: Color;
+
 	private _onDidChange = this._register(new Emitter<string>());
 	public onDidChange: Event<string> = this._onDidChange.event;
 
@@ -92,13 +117,22 @@ export class InputBox extends Widget {
 
 		this.contextViewProvider = contextViewProvider;
 		this.options = options || Object.create(null);
+		mixin(this.options, defaultOpts, false);
 		this.message = null;
 		this.cachedHeight = null;
 		this.placeholder = this.options.placeholder || '';
 		this.ariaLabel = this.options.ariaLabel || '';
+
 		this.inputBackground = this.options.inputBackground;
 		this.inputForeground = this.options.inputForeground;
 		this.inputBorder = this.options.inputBorder;
+
+		this.infoBorder = this.options.infoBorder;
+		this.infoBackground = this.options.infoBackground;
+		this.warningBorder = this.options.warningBorder;
+		this.warningBackground = this.options.warningBackground;
+		this.errorBorder = this.options.errorBorder;
+		this.errorBackground = this.options.errorBackground;
 
 		if (this.options.validationOptions) {
 			this.validation = this.options.validationOptions.validation;
@@ -154,7 +188,7 @@ export class InputBox extends Widget {
 			this.actionbar.push(this.options.actions, { icon: true, label: false });
 		}
 
-		this._applyStyles();
+		this.applyStyles();
 	}
 
 	private onBlur(): void {
@@ -260,6 +294,9 @@ export class InputBox extends Widget {
 		dom.removeClass(this.element, 'error');
 		dom.addClass(this.element, this.classForType(message.type));
 
+		const styles = this.stylesForType(this.message.type);
+		this.element.style.border = styles.border ? `1px solid ${styles.border}` : null;
+
 		// ARIA Support
 		let alertText: string;
 		if (message.type === MessageType.ERROR) {
@@ -286,6 +323,7 @@ export class InputBox extends Widget {
 		dom.addClass(this.element, 'idle');
 
 		this._hideMessage();
+		this.applyStyles();
 	}
 
 	public isInputValid(): boolean {
@@ -308,6 +346,14 @@ export class InputBox extends Widget {
 		}
 
 		return !result;
+	}
+
+	private stylesForType(type: MessageType): { border: Color; background: Color } {
+		switch (type) {
+			case MessageType.INFO: return { border: this.infoBorder, background: this.infoBackground };
+			case MessageType.WARNING: return { border: this.warningBorder, background: this.warningBackground };
+			default: return { border: this.errorBorder, background: this.errorBackground };
+		}
 	}
 
 	private classForType(type: MessageType): string {
@@ -348,7 +394,13 @@ export class InputBox extends Widget {
 
 				let spanElement: HTMLElement = <any>renderHtml(renderOptions);
 				dom.addClass(spanElement, this.classForType(this.message.type));
+
+				const styles = this.stylesForType(this.message.type);
+				spanElement.style.backgroundColor = styles.background ? styles.background.toString() : null;
+				spanElement.style.border = styles.border ? `1px solid ${styles.border}` : null;
+
 				dom.append(div, spanElement);
+
 				return null;
 			},
 			layout: layout
@@ -388,15 +440,22 @@ export class InputBox extends Widget {
 		this.layout();
 	}
 
-	public style(styles: IInputBoxStyles) {
+	public style(styles: IInputBoxStyles): void {
 		this.inputBackground = styles.inputBackground;
 		this.inputForeground = styles.inputForeground;
 		this.inputBorder = styles.inputBorder;
 
-		this._applyStyles();
+		this.infoBackground = styles.infoBackground;
+		this.infoBorder = styles.infoBorder;
+		this.warningBackground = styles.warningBackground;
+		this.warningBorder = styles.warningBorder;
+		this.errorBackground = styles.errorBackground;
+		this.errorBorder = styles.errorBorder;
+
+		this.applyStyles();
 	}
 
-	protected _applyStyles() {
+	protected applyStyles(): void {
 		if (this.element) {
 			const background = this.inputBackground ? this.inputBackground.toString() : null;
 			const foreground = this.inputForeground ? this.inputForeground.toString() : null;

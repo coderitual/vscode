@@ -29,6 +29,11 @@ declare module 'vscode' {
 		command: string;
 
 		/**
+		 * A tooltip for for command, when represented in the UI.
+		 */
+		tooltip?: string;
+
+		/**
 		 * Arguments that the command handler should be
 		 * invoked with.
 		 */
@@ -130,6 +135,12 @@ declare module 'vscode' {
 		 * will return false.
 		 */
 		save(): Thenable<boolean>;
+
+		/**
+		 * The [end of line](#EndOfLine) sequence that is predominately
+		 * used in this document.
+		 */
+		readonly eol: EndOfLine;
 
 		/**
 		 * The number of lines in this document.
@@ -688,6 +699,29 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * Represents options to configure the behavior of showing a [document](#TextDocument) in an [editor](#TextEditor).
+	 */
+	export interface TextDocumentShowOptions {
+		/**
+		 * An optional view column in which the [editor](#TextEditor) should be shown.
+		 * The default is the [one](#ViewColumn.One), other values are adjusted to
+		 * be __Min(column, columnCount + 1)__.
+		 */
+		viewColumn?: ViewColumn;
+
+		/**
+		 * An optional flag that when `true` will stop the [editor](#TextEditor) from taking focus.
+		 */
+		preserveFocus?: boolean;
+
+		/**
+		 * An optional flag that controls if an [editor](#TextEditor)-tab will be replaced
+		 * with the next editor or if it will be kept.
+		 */
+		preview?: boolean;
+	}
+
+	/**
 	 * Represents theme specific rendering styles for a [text editor decoration](#TextEditorDecorationType).
 	 */
 	export interface ThemableDecorationRenderOptions {
@@ -911,7 +945,7 @@ declare module 'vscode' {
 		/**
 		 * Overwrite options for dark themes.
 		 */
-		dark?: ThemableDecorationInstanceRenderOptions
+		dark?: ThemableDecorationInstanceRenderOptions;
 	}
 
 	/**
@@ -1455,6 +1489,14 @@ declare module 'vscode' {
 		value?: string;
 
 		/**
+		 * Selection of the prefilled [`value`](#InputBoxOptions.value). Defined as tuple of two number where the
+		 * first is the inclusive start index and the second the exclusive end index. When `undefined` the whole
+		 * word will be selected, when empty (start equals end) only the cursor will be set,
+		 * otherwise the defined range will be selected.
+		 */
+		valueSelection?: [number, number];
+
+		/**
 		 * The text to display underneath the input box.
 		 */
 		prompt?: string;
@@ -1491,7 +1533,7 @@ declare module 'vscode' {
 	 * its resource, or a glob-pattern that is applied to the [path](#TextDocument.fileName).
 	 *
 	 * @sample A language filter that applies to typescript files on disk: `{ language: 'typescript', scheme: 'file' }`
-	 * @sample A language filter that applies to all package.json paths: `{ language: 'json', pattern: '**∕project.json' }`
+	 * @sample A language filter that applies to all package.json paths: `{ language: 'json', pattern: '**∕package.json' }`
 	 */
 	export interface DocumentFilter {
 
@@ -1551,7 +1593,7 @@ declare module 'vscode' {
 	 * }
 	 * ```
 	 */
-	export type ProviderResult<T> = T | undefined | null | Thenable<T | undefined | null>
+	export type ProviderResult<T> = T | undefined | null | Thenable<T | undefined | null>;
 
 	/**
 	 * Contains additional diagnostic information about the context in which
@@ -1852,8 +1894,6 @@ declare module 'vscode' {
 		Field = 7,
 		Constructor = 8,
 		Enum = 9,
-		EnumMember = 21,
-		Struct = 22,
 		Interface = 10,
 		Function = 11,
 		Variable = 12,
@@ -1864,7 +1904,12 @@ declare module 'vscode' {
 		Array = 17,
 		Object = 18,
 		Key = 19,
-		Null = 20
+		Null = 20,
+		EnumMember = 21,
+		Struct = 22,
+		Event = 23,
+		Operator = 24,
+		TypeParameter = 25
 	}
 
 	/**
@@ -2032,6 +2077,14 @@ declare module 'vscode' {
 		static delete(range: Range): TextEdit;
 
 		/**
+		 * Utility to create an eol-edit.
+		 *
+		 * @param eol An eol-sequence
+		 * @return A new text edit object.
+		 */
+		static setEndOfLine(eol: EndOfLine): TextEdit;
+
+		/**
 		 * The range this edit applies to.
 		 */
 		range: Range;
@@ -2040,6 +2093,14 @@ declare module 'vscode' {
 		 * The string this edit will insert.
 		 */
 		newText: string;
+
+		/**
+		 * The eol-sequence used in the document.
+		 *
+		 * *Note* that the eol-sequence will be applied to the
+		 * whole document.
+		 */
+		newEol: EndOfLine;
 
 		/**
 		 * Create a new TextEdit.
@@ -2398,20 +2459,23 @@ declare module 'vscode' {
 		Variable = 5,
 		Class = 6,
 		Interface = 7,
-		Struct = 21,
 		Module = 8,
 		Property = 9,
 		Unit = 10,
 		Value = 11,
-		Constant = 20,
 		Enum = 12,
-		EnumMember = 19,
 		Keyword = 13,
 		Snippet = 14,
 		Color = 15,
 		Reference = 17,
 		File = 16,
-		Folder = 18
+		Folder = 18,
+		EnumMember = 19,
+		Constant = 20,
+		Struct = 21,
+		Event = 22,
+		Operator = 23,
+		TypeParameter = 24
 	}
 
 	/**
@@ -3245,6 +3309,18 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * Defines a generalized way of reporting progress updates.
+	 */
+	export interface Progress<T> {
+
+		/**
+		 * Report a progress update.
+		 * @param value A progress item, like a message or an updated percentage value
+		 */
+		report(value: T): void;
+	}
+
+	/**
 	 * An individual terminal instance within the integrated terminal.
 	 */
 	export interface Terminal {
@@ -3607,6 +3683,16 @@ declare module 'vscode' {
 		export function showTextDocument(document: TextDocument, column?: ViewColumn, preserveFocus?: boolean): Thenable<TextEditor>;
 
 		/**
+		 * Show the given document in a text editor. A [column](#ViewColumn) can be provided
+		 * to control where the editor is being shown. Might change the [active editor](#window.activeTextEditor).
+		 *
+		 * @param document A text document to be shown.
+		 * @param options [Editor options](#ShowTextDocumentOptions) to configure the behavior of showing the [editor](#TextEditor).
+		 * @return A promise that resolves to an [editor](#TextEditor).
+		 */
+		export function showTextDocument(document: TextDocument, options?: TextDocumentShowOptions): Thenable<TextEditor>;
+
+		/**
 		 * Create a TextEditorDecorationType that can be used to add decorations to text editors.
 		 *
 		 * @param options Rendering options for the decoration type.
@@ -3823,6 +3909,29 @@ declare module 'vscode' {
 		export function setStatusBarMessage(text: string): Disposable;
 
 		/**
+		 * @deprecated This function **deprecated**. Use `withProgress` instead.
+		 *
+		 * ~~Show progress in the Source Control viewlet while running the given callback and while
+		 * its returned promise isn't resolve or rejected.~~
+		 *
+		 * @param task A callback returning a promise. Progress increments can be reported with
+		 * the provided [progress](#Progress)-object.
+		 * @return The thenable the task did rseturn.
+		 */
+		export function withScmProgress<R>(task: (progress: Progress<number>) => Thenable<R>): Thenable<R>;
+
+		/**
+		 * Show progress in the editor. Progress is shown while running the given callback
+		 * and while the promise it returned isn't resolved nor rejected. The location at which
+		 * progress should show (and other details) is defined via the passed [`ProgressOptions`](#ProgressOptions).
+		 *
+		 * @param task A callback returning a promise. Progress state can be reported with
+		 * the provided [progress](#Progress)-object.
+		 * @return The thenable the task-callback returned.
+		 */
+		export function withProgress<R>(options: ProgressOptions, task: (progress: Progress<{ message?: string; percentage?: number }>) => Thenable<R>): Thenable<R>;
+
+		/**
 		 * Creates a status bar [item](#StatusBarItem).
 		 *
 		 * @param alignment The alignment of the item.
@@ -3853,7 +3962,7 @@ declare module 'vscode' {
 	}
 
 	/**
-	 * Value-object describing what options formatting should use.
+	 * Value-object describing what options a terminal should use.
 	 */
 	export interface TerminalOptions {
 		/**
@@ -3870,6 +3979,41 @@ declare module 'vscode' {
 		 * Args for the custom shell executable, this does not work on Windows (see #8429)
 		 */
 		shellArgs?: string[];
+	}
+
+	/**
+	 * A location in the editor at which progress information can be shown. It depends on the
+	 * location how progress is visually represented.
+	 */
+	export enum ProgressLocation {
+
+		/**
+		 * Show progress for the source control viewlet, as overlay for the icon and as progress bar
+		 * inside the viewlet (when visible).
+		 */
+		SourceControl = 1,
+
+		/**
+		 * Show progress in the status bar of the editor.
+		 */
+		Window = 10
+	}
+
+	/**
+	 * Value-object describing where and how progress should show.
+	 */
+	export interface ProgressOptions {
+
+		/**
+		 * The location at which progress should show.
+		 */
+		location: ProgressLocation;
+
+		/**
+		 * A human-readable string which will be used to describe the
+		 * operation.
+		 */
+		title?: string;
 	}
 
 	/**
@@ -4205,19 +4349,14 @@ declare module 'vscode' {
 		 * Compute the match between a document [selector](#DocumentSelector) and a document. Values
 		 * greater than zero mean the selector matches the document.
 		 *
-		 * *Note:* By default, only documents from the `file` and `untitled` schemes match a selector. Other schemes
-		 * must be explicity spelled out, like `{scheme: 'fooScheme'}` to match a document with `fooScheme://some/uri/`.
-		 *
 		 * A match is computed according to these rules:
-		 * 1. When [`DocumentSelector`](#DocumentSelector) is an array, take compute the match for each contained `DocumentFilter` or language identifier and take the maximum value.
-		 * 2. A string it will be desugared to become the `language`-part of a [`DocumentFilter`](#DocumentFilter), so `"fooLang"` is like `{ language: "fooLang" }`.
+		 * 1. When [`DocumentSelector`](#DocumentSelector) is an array, compute the match for each contained `DocumentFilter` or language identifier and take the maximum value.
+		 * 2. A string will be desugared to become the `language`-part of a [`DocumentFilter`](#DocumentFilter), so `"fooLang"` is like `{ language: "fooLang" }`.
 		 * 3. A [`DocumentFilter`](#DocumentFilter) will be matched against the document by comparing its parts with the document. The following rules apply:
 		 *  1. When the `DocumentFilter` is empty (`{}`) the result is `0`
-		 *  2. When `scheme`, `language`, or `pattern` are defined but doesn’t match, the result is `0`
-		 *  3. When `language` is the generic language id `*` and `scheme` isn’t defined, it becomes `*` too
-		 *  4. When `scheme` isn’t defined and `language` is the generic language identifider `*` it becomes `*` too, otherwise `scheme` defaults to two values: `file` and `untitled`.
-		 *  5. Matching against `*` gives a score of `5`, matching via equality or via a glob-pattern gives a score of `10`
-		 *  6. The result is the maximun value of each match
+		 *  2. When `scheme`, `language`, or `pattern` are defined but one doesn’t match, the result is `0`
+		 *  3. Matching against `*` gives a score of `5`, matching via equality or via a glob-pattern gives a score of `10`
+		 *  4. The result is the maximun value of each match
 		 *
 		 * Samples:
 		 * ```js
@@ -4234,7 +4373,7 @@ declare module 'vscode' {
 		 * // virtual document, e.g. from git-index
 		 * doc.uri; // 'git:/my/file.js'
 		 * doc.languageId; // 'javascript'
-		 * match('javascript', doc); // 0;
+		 * match('javascript', doc); // 10;
 		 * match({language: 'javascript', scheme: 'git'}, doc); // 10;
 		 * match('*', doc); // 5
 		 * ```
@@ -4491,6 +4630,204 @@ declare module 'vscode' {
 		 * @return A [disposable](#Disposable) that unsets this configuration.
 		 */
 		export function setLanguageConfiguration(language: string, configuration: LanguageConfiguration): Disposable;
+	}
+
+	/**
+	 * Represents the input box in the Source Control viewlet.
+	 */
+	export interface SourceControlInputBox {
+
+		/**
+		 * Setter and getter for the contents of the input box.
+		 */
+		value: string;
+	}
+
+	interface QuickDiffProvider {
+
+		/**
+		 * Provide a [uri](#Uri) to the original resource of any given resource uri.
+		 *
+		 * @param uri The uri of the resource open in a text editor.
+		 * @param token A cancellation token.
+		 * @return A thenable that resolves to uri of the matching original resource.
+		 */
+		provideOriginalResource?(uri: Uri, token: CancellationToken): ProviderResult<Uri>;
+	}
+
+	/**
+	 * The theme-aware decorations for a
+	 * [source control resource state](#SourceControlResourceState).
+	 */
+	export interface SourceControlResourceThemableDecorations {
+
+		/**
+		 * The icon path for a specific
+		 * [source control resource state](#SourceControlResourceState).
+		 */
+		readonly iconPath?: string | Uri;
+	}
+
+	/**
+	 * The decorations for a [source control resource state](#SourceControlResourceState).
+	 * Can be independently specified for light and dark themes.
+	 */
+	export interface SourceControlResourceDecorations extends SourceControlResourceThemableDecorations {
+
+		/**
+		 * Whether the [source control resource state](#SourceControlResourceState) should
+		 * be striked-through in the UI.
+		 */
+		readonly strikeThrough?: boolean;
+
+		/**
+		 * The light theme decorations.
+		 */
+		readonly light?: SourceControlResourceThemableDecorations;
+
+		/**
+		 * The dark theme decorations.
+		 */
+		readonly dark?: SourceControlResourceThemableDecorations;
+	}
+
+	/**
+	 * An source control resource state represents the state of an underlying workspace
+	 * resource within a certain [source control group](#SourceControlResourceGroup).
+	 */
+	export interface SourceControlResourceState {
+
+		/**
+		 * The [uri](#Uri) of the underlying resource inside the workspace.
+		 */
+		readonly resourceUri: Uri;
+
+		/**
+		 * The [command](#Command) which should be run when the resource
+		 * state is open in the Source Control viewlet.
+		 */
+		readonly command?: Command;
+
+		/**
+		 * The [decorations](#SourceControlResourceDecorations) for this source control
+		 * resource state.
+		 */
+		readonly decorations?: SourceControlResourceDecorations;
+	}
+
+	/**
+	 * A source control resource group is a collection of
+	 * [source control resource states](#SourceControlResourceState).
+	 */
+	export interface SourceControlResourceGroup {
+
+		/**
+		 * The id of this source control resource group.
+		 */
+		readonly id: string;
+
+		/**
+		 * The label of this source control resource group.
+		 */
+		readonly label: string;
+
+		/**
+		 * Whether this source control resource group is hidden when it contains
+		 * no [source control resource states](#SourceControlResourceState).
+		 */
+		hideWhenEmpty?: boolean;
+
+		/**
+		 * This group's collection of
+		 * [source control resource states](#SourceControlResourceState).
+		 */
+		resourceStates: SourceControlResourceState[];
+
+		/**
+		 * Dispose this source control resource group.
+		 */
+		dispose(): void;
+	}
+
+	/**
+	 * An source control is able to provide [resource states](#SourceControlResourceState)
+	 * to the editor and interact with the editor in several source control related ways.
+	 */
+	export interface SourceControl {
+
+		/**
+		 * The id of this source control.
+		 */
+		readonly id: string;
+
+		/**
+		 * The human-readable label of this source control.
+		 */
+		readonly label: string;
+
+		/**
+		 * The UI-visible count of [resource states](#SourceControlResourceState) of
+		 * this source control.
+		 *
+		 * Equals to the total number of [resource state](#SourceControlResourceState)
+		 * of this source control, if undefined.
+		 */
+		count?: number;
+
+		/**
+		 * An optional [quick diff provider](#QuickDiffProvider).
+		 */
+		quickDiffProvider?: QuickDiffProvider;
+
+		/**
+		 * Optional commit template string.
+		 *
+		 * The Source Control viewlet will populate the Source Control
+		 * input with this value when appropriate.
+		 */
+		commitTemplate?: string;
+
+		/**
+		 * Optional accept input command.
+		 *
+		 * This command will be invoked when the user accepts the value
+		 * in the Source Control input.
+		 */
+		acceptInputCommand?: Command;
+
+		/**
+		 * Optional status bar commands.
+		 *
+		 * These commands will be displayed in the editor's status bar.
+		 */
+		statusBarCommands?: Command[];
+
+		/**
+		 * Create a new [resource group](#SourceControlResourceGroup).
+		 */
+		createResourceGroup(id: string, label: string): SourceControlResourceGroup;
+
+		/**
+		 * Dispose this source control.
+		 */
+		dispose(): void;
+	}
+
+	export namespace scm {
+
+		/**
+		 * The [input box](#SourceControlInputBox) in the Source Control viewlet.
+		 */
+		export const inputBox: SourceControlInputBox;
+
+		/**
+		 * Creates a new [source control](#SourceControl) instance.
+		 *
+		 * @param id A unique `id` for the source control. Something short, eg: `git`.
+		 * @param label A human-readable string for the source control. Eg: `Git`.
+		 * @return An instance of [source control](#SourceControl).
+		 */
+		export function createSourceControl(id: string, label: string): SourceControl;
 	}
 
 	/**

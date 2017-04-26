@@ -130,7 +130,9 @@ export class StartAction extends AbstractDebugAction {
 	// Disabled if the launch drop down shows the launch config that is already running.
 	protected isEnabled(state: State): boolean {
 		const processes = this.debugService.getModel().getProcesses();
+		const compound = this.debugService.getConfigurationManager().getCompound(this.debugService.getViewModel().selectedConfigurationName);
 		return state !== State.Initializing && processes.every(p => p.name !== this.debugService.getViewModel().selectedConfigurationName) &&
+			(!compound || !compound.configurations || processes.every(p => compound.configurations.indexOf(p.name) === -1)) &&
 			(!this.contextService || !!this.contextService.getWorkspace() || processes.length === 0);
 	}
 }
@@ -605,6 +607,20 @@ export class AddWatchExpressionAction extends AbstractDebugAction {
 
 	protected isEnabled(state: State): boolean {
 		return super.isEnabled(state) && this.debugService.getModel().getWatchExpressions().every(we => !!we.name);
+	}
+}
+
+export class EditWatchExpressionAction extends AbstractDebugAction {
+	static ID = 'workbench.debug.viewlet.action.editWatchExpression';
+	static LABEL = nls.localize('editWatchExpression', "Edit Expression");
+
+	constructor(id: string, label: string, @IDebugService debugService: IDebugService, @IKeybindingService keybindingService: IKeybindingService) {
+		super(id, label, undefined, debugService, keybindingService);
+	}
+
+	public run(expression: Expression): TPromise<any> {
+		this.debugService.getViewModel().setSelectedExpression(expression);
+		return TPromise.as(null);
 	}
 }
 
