@@ -1722,6 +1722,35 @@ suite('Editor Controller - Regression tests', () => {
 			assertCursor(cursor, new Position(1, 1));
 		});
 	});
+
+	test('issue #23913: Greater than 1000+ multi cursor typing replacement text appears inverted, lines begin to drop off selection', () => {
+		const LINE_CNT = 2000;
+
+		let text = [];
+		for (let i = 0; i < LINE_CNT; i++) {
+			text[i] = 'asd';
+		}
+		usingCursor({
+			text: text
+		}, (model, cursor) => {
+
+			let selections: Selection[] = [];
+			for (let i = 0; i < LINE_CNT; i++) {
+				selections[i] = new Selection(i + 1, 1, i + 1, 1);
+			}
+			cursor.setSelections('test', selections);
+
+			cursorCommand(cursor, H.Type, { text: 'n' }, 'keyboard');
+			cursorCommand(cursor, H.Type, { text: 'n' }, 'keyboard');
+
+			for (let i = 0; i < LINE_CNT; i++) {
+				assert.equal(model.getLineContent(i + 1), 'nnasd', 'line #' + (i + 1));
+			}
+
+			assert.equal(cursor.getSelections().length, LINE_CNT);
+			assert.equal(cursor.getSelections()[LINE_CNT - 1].startLineNumber, LINE_CNT);
+		});
+	});
 });
 
 suite('Editor Controller - Cursor Configuration', () => {
@@ -2318,7 +2347,7 @@ suite('Editor Controller - Cursor Configuration', () => {
 suite('Editor Controller - Indentation Rules', () => {
 	let mode = new IndentRulesMode({
 		decreaseIndentPattern: /^\s*((?!\S.*\/[*]).*[*]\/\s*)?[})\]]|^\s*(case\b.*|default):\s*(\/\/.*|\/[*].*[*]\/\s*)?$/,
-		increaseIndentPattern: /(\{[^}"']*|\([^)"']*|\[[^\]"']*|^\s*(\{\}|\(\)|\[\]|(case\b.*|default):))\s*(\/\/.*|\/[*].*[*]\/\s*)?$/,
+		increaseIndentPattern: /(\{[^}"'`]*|\([^)"']*|\[[^\]"']*|^\s*(\{\}|\(\)|\[\]|(case\b.*|default):))\s*(\/\/.*|\/[*].*[*]\/\s*)?$/,
 		indentNextLinePattern: /^\s*(for|while|if|else)\b(?!.*[;{}]\s*(\/\/.*|\/[*].*[*]\/\s*)?$)/,
 		unIndentedLinePattern: /^(?!.*([;{}]|\S:)\s*(\/\/.*|\/[*].*[*]\/\s*)?$)(?!.*(\{[^}"']*|\([^)"']*|\[[^\]"']*|^\s*(\{\}|\(\)|\[\]|(case\b.*|default):))\s*(\/\/.*|\/[*].*[*]\/\s*)?$)(?!^\s*((?!\S.*\/[*]).*[*]\/\s*)?[})\]]|^\s*(case\b.*|default):\s*(\/\/.*|\/[*].*[*]\/\s*)?$)(?!^\s*(for|while|if|else)\b(?!.*[;{}]\s*(\/\/.*|\/[*].*[*]\/\s*)?$))/
 	});
@@ -2936,6 +2965,23 @@ suite('ElectricCharacter', () => {
 		});
 		mode.dispose();
 	});
+
+	test('issue #23711: Replacing selected text with )]} fails to delete old text with backwards-dragged selection', () => {
+		let mode = new ElectricCharMode();
+		usingCursor({
+			text: [
+				'{',
+				'word'
+			],
+			languageIdentifier: mode.getLanguageIdentifier()
+		}, (model, cursor) => {
+			moveTo(cursor, 2, 5);
+			moveTo(cursor, 2, 1, true);
+			cursorCommand(cursor, H.Type, { text: '}' }, 'keyboard');
+			assert.deepEqual(model.getLineContent(2), '}');
+		});
+		mode.dispose();
+	});
 });
 
 suite('autoClosingPairs', () => {
@@ -3117,6 +3163,28 @@ suite('autoClosingPairs', () => {
 			cursorCommand(cursor, H.Type, { text: '`' }, 'keyboard');
 
 			assert.equal(model.getValue(), 'var a = `asd`');
+		});
+		mode.dispose();
+	});
+
+	test('All cursors should do the same thing when deleting left', () => {
+		let mode = new AutoClosingMode();
+		usingCursor({
+			text: [
+				'var a = ()'
+			],
+			languageIdentifier: mode.getLanguageIdentifier()
+		}, (model, cursor) => {
+
+			cursor.setSelections('test', [
+				new Selection(1, 4, 1, 4),
+				new Selection(1, 10, 1, 10),
+			]);
+
+			// delete left
+			cursorCommand(cursor, H.DeleteLeft, null, 'keyboard');
+
+			assert.equal(model.getValue(), 'va a = )');
 		});
 		mode.dispose();
 	});

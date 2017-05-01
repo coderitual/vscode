@@ -3929,7 +3929,7 @@ declare module 'vscode' {
 		 * the provided [progress](#Progress)-object.
 		 * @return The thenable the task-callback returned.
 		 */
-		export function withProgress<R>(options: ProgressOptions, task: (progress: Progress<{ message?: string; percentage?: number }>) => Thenable<R>): Thenable<R>;
+		export function withProgress<R>(options: ProgressOptions, task: (progress: Progress<{ message?: string; }>) => Thenable<R>): Thenable<R>;
 
 		/**
 		 * Creates a status bar [item](#StatusBarItem).
@@ -4679,6 +4679,12 @@ declare module 'vscode' {
 		 * be striked-through in the UI.
 		 */
 		readonly strikeThrough?: boolean;
+
+		/**
+		 * Whether the [source control resource state](#SourceControlResourceState) should
+		 * be faded in the UI.
+		 */
+		readonly faded?: boolean;
 
 		/**
 		 * The light theme decorations.

@@ -6,7 +6,7 @@
 'use strict';
 
 import { ITheme, IThemeService } from 'vs/platform/theme/common/themeService';
-import { inputBackground, inputForeground, ColorIdentifier, selectForeground, selectBackground, selectBorder, inputBorder, foreground, editorBackground, highContrastBorder, inputActiveOptionBorder, listFocusBackground, listActiveSelectionBackground, listActiveSelectionForeground, listFocusAndSelectionBackground, listFocusAndSelectionForeground, listInactiveFocusBackground, listInactiveSelectionBackground, listHoverBackground, listDropBackground, pickerGroupBorder, pickerGroupForeground, widgetShadow, infoBorder, infoBackground, warningBorder, warningBackground, errorBorder, errorBackground, highContrastOutline, buttonForeground, buttonBackground, buttonHoverBackground } from 'vs/platform/theme/common/colorRegistry';
+import { inputBackground, inputForeground, ColorIdentifier, selectForeground, selectBackground, selectBorder, inputBorder, foreground, editorBackground, contrastBorder, inputActiveOptionBorder, listFocusBackground, listActiveSelectionBackground, listActiveSelectionForeground, listInactiveSelectionBackground, listHoverBackground, listDropBackground, pickerGroupBorder, pickerGroupForeground, widgetShadow, inputValidationInfoBorder, inputValidationInfoBackground, inputValidationWarningBorder, inputValidationWarningBackground, inputValidationErrorBorder, inputValidationErrorBackground, activeContrastBorder, buttonForeground, buttonBackground, buttonHoverBackground, ColorFunction, lighten } from 'vs/platform/theme/common/colorRegistry';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { SIDE_BAR_SECTION_HEADER_BACKGROUND } from 'vs/workbench/common/theme';
 
@@ -14,11 +14,16 @@ export interface IThemable {
 	style(colors: { [name: string]: ColorIdentifier }): void;
 }
 
-export function attachStyler(themeService: IThemeService, widget: IThemable, optionsMapping: { [optionsKey: string]: ColorIdentifier }): IDisposable {
+export function attachStyler(themeService: IThemeService, widget: IThemable, optionsMapping: { [optionsKey: string]: ColorIdentifier | ColorFunction }): IDisposable {
 	function applyStyles(theme: ITheme): void {
 		const styles = Object.create(null);
 		for (let key in optionsMapping) {
-			styles[key] = theme.getColor(optionsMapping[key]);
+			const value = optionsMapping[key];
+			if (typeof value === 'string') {
+				styles[key] = theme.getColor(value);
+			} else if (typeof value === 'function') {
+				styles[key] = value(theme);
+			}
 		}
 
 		widget.style(styles);
@@ -40,23 +45,23 @@ export function attachInputBoxStyler(widget: IThemable, themeService: IThemeServ
 		inputBackground?: ColorIdentifier,
 		inputForeground?: ColorIdentifier,
 		inputBorder?: ColorIdentifier,
-		infoBorder?: ColorIdentifier,
-		infoBackground?: ColorIdentifier,
-		warningBorder?: ColorIdentifier,
-		warningBackground?: ColorIdentifier,
-		errorBorder?: ColorIdentifier,
-		errorBackground?: ColorIdentifier
+		inputValidationInfoBorder?: ColorIdentifier,
+		inputValidationInfoBackground?: ColorIdentifier,
+		inputValidationWarningBorder?: ColorIdentifier,
+		inputValidationWarningBackground?: ColorIdentifier,
+		inputValidationErrorBorder?: ColorIdentifier,
+		inputValidationErrorBackground?: ColorIdentifier
 	}): IDisposable {
 	return attachStyler(themeService, widget, {
 		inputBackground: (style && style.inputBackground) || inputBackground,
 		inputForeground: (style && style.inputForeground) || inputForeground,
 		inputBorder: (style && style.inputBorder) || inputBorder,
-		infoBorder: (style && style.infoBorder) || infoBorder,
-		infoBackground: (style && style.infoBackground) || infoBackground,
-		warningBorder: (style && style.warningBorder) || warningBorder,
-		warningBackground: (style && style.warningBackground) || warningBackground,
-		errorBorder: (style && style.errorBorder) || errorBorder,
-		errorBackground: (style && style.errorBackground) || errorBackground
+		inputValidationInfoBorder: (style && style.inputValidationInfoBorder) || inputValidationInfoBorder,
+		inputValidationInfoBackground: (style && style.inputValidationInfoBackground) || inputValidationInfoBackground,
+		inputValidationWarningBorder: (style && style.inputValidationWarningBorder) || inputValidationWarningBorder,
+		inputValidationWarningBackground: (style && style.inputValidationWarningBackground) || inputValidationWarningBackground,
+		inputValidationErrorBorder: (style && style.inputValidationErrorBorder) || inputValidationErrorBorder,
+		inputValidationErrorBackground: (style && style.inputValidationErrorBackground) || inputValidationErrorBackground
 	});
 }
 
@@ -74,24 +79,24 @@ export function attachFindInputBoxStyler(widget: IThemable, themeService: ITheme
 		inputForeground?: ColorIdentifier,
 		inputBorder?: ColorIdentifier,
 		inputActiveOptionBorder?: ColorIdentifier,
-		infoBorder?: ColorIdentifier,
-		infoBackground?: ColorIdentifier,
-		warningBorder?: ColorIdentifier,
-		warningBackground?: ColorIdentifier,
-		errorBorder?: ColorIdentifier,
-		errorBackground?: ColorIdentifier
+		inputValidationInfoBorder?: ColorIdentifier,
+		inputValidationInfoBackground?: ColorIdentifier,
+		inputValidationWarningBorder?: ColorIdentifier,
+		inputValidationWarningBackground?: ColorIdentifier,
+		inputValidationErrorBorder?: ColorIdentifier,
+		inputValidationErrorBackground?: ColorIdentifier
 	}): IDisposable {
 	return attachStyler(themeService, widget, {
 		inputBackground: (style && style.inputBackground) || inputBackground,
 		inputForeground: (style && style.inputForeground) || inputForeground,
 		inputBorder: (style && style.inputBorder) || inputBorder,
 		inputActiveOptionBorder: (style && style.inputActiveOptionBorder) || inputActiveOptionBorder,
-		infoBorder: (style && style.infoBorder) || infoBorder,
-		infoBackground: (style && style.infoBackground) || infoBackground,
-		warningBorder: (style && style.warningBorder) || warningBorder,
-		warningBackground: (style && style.warningBackground) || warningBackground,
-		errorBorder: (style && style.errorBorder) || errorBorder,
-		errorBackground: (style && style.errorBackground) || errorBackground
+		inputValidationInfoBorder: (style && style.inputValidationInfoBorder) || inputValidationInfoBorder,
+		inputValidationInfoBackground: (style && style.inputValidationInfoBackground) || inputValidationInfoBackground,
+		inputValidationWarningBorder: (style && style.inputValidationWarningBorder) || inputValidationWarningBorder,
+		inputValidationWarningBackground: (style && style.inputValidationWarningBackground) || inputValidationWarningBackground,
+		inputValidationErrorBorder: (style && style.inputValidationErrorBorder) || inputValidationErrorBorder,
+		inputValidationErrorBackground: (style && style.inputValidationErrorBackground) || inputValidationErrorBackground
 	});
 }
 
@@ -103,12 +108,12 @@ export function attachQuickOpenStyler(widget: IThemable, themeService: IThemeSer
 	inputBackground?: ColorIdentifier,
 	inputForeground?: ColorIdentifier,
 	inputBorder?: ColorIdentifier,
-	infoBorder?: ColorIdentifier,
-	infoBackground?: ColorIdentifier,
-	warningBorder?: ColorIdentifier,
-	warningBackground?: ColorIdentifier,
-	errorBorder?: ColorIdentifier,
-	errorBackground?: ColorIdentifier
+	inputValidationInfoBorder?: ColorIdentifier,
+	inputValidationInfoBackground?: ColorIdentifier,
+	inputValidationWarningBorder?: ColorIdentifier,
+	inputValidationWarningBackground?: ColorIdentifier,
+	inputValidationErrorBorder?: ColorIdentifier,
+	inputValidationErrorBackground?: ColorIdentifier
 	pickerGroupForeground?: ColorIdentifier,
 	pickerGroupBorder?: ColorIdentifier,
 	listFocusBackground?: ColorIdentifier,
@@ -126,30 +131,30 @@ export function attachQuickOpenStyler(widget: IThemable, themeService: IThemeSer
 	return attachStyler(themeService, widget, {
 		foreground: (style && style.foreground) || foreground,
 		background: (style && style.background) || editorBackground,
-		borderColor: style && style.borderColor || highContrastBorder,
+		borderColor: style && style.borderColor || contrastBorder,
 		widgetShadow: style && style.widgetShadow || widgetShadow,
 		pickerGroupForeground: style && style.pickerGroupForeground || pickerGroupForeground,
 		pickerGroupBorder: style && style.pickerGroupBorder || pickerGroupBorder,
 		inputBackground: (style && style.inputBackground) || inputBackground,
 		inputForeground: (style && style.inputForeground) || inputForeground,
 		inputBorder: (style && style.inputBorder) || inputBorder,
-		infoBorder: (style && style.infoBorder) || infoBorder,
-		infoBackground: (style && style.infoBackground) || infoBackground,
-		warningBorder: (style && style.warningBorder) || warningBorder,
-		warningBackground: (style && style.warningBackground) || warningBackground,
-		errorBorder: (style && style.errorBorder) || errorBorder,
-		errorBackground: (style && style.errorBackground) || errorBackground,
+		inputValidationInfoBorder: (style && style.inputValidationInfoBorder) || inputValidationInfoBorder,
+		inputValidationInfoBackground: (style && style.inputValidationInfoBackground) || inputValidationInfoBackground,
+		inputValidationWarningBorder: (style && style.inputValidationWarningBorder) || inputValidationWarningBorder,
+		inputValidationWarningBackground: (style && style.inputValidationWarningBackground) || inputValidationWarningBackground,
+		inputValidationErrorBorder: (style && style.inputValidationErrorBorder) || inputValidationErrorBorder,
+		inputValidationErrorBackground: (style && style.inputValidationErrorBackground) || inputValidationErrorBackground,
 		listFocusBackground: (style && style.listFocusBackground) || listFocusBackground,
-		listActiveSelectionBackground: (style && style.listActiveSelectionBackground) || listActiveSelectionBackground,
+		listActiveSelectionBackground: (style && style.listActiveSelectionBackground) || lighten(listActiveSelectionBackground, 0.1),
 		listActiveSelectionForeground: (style && style.listActiveSelectionForeground) || listActiveSelectionForeground,
-		listFocusAndSelectionBackground: (style && style.listFocusAndSelectionBackground) || listFocusAndSelectionBackground,
-		listFocusAndSelectionForeground: (style && style.listFocusAndSelectionForeground) || listFocusAndSelectionForeground,
+		listFocusAndSelectionBackground: style && style.listFocusAndSelectionBackground || listActiveSelectionBackground,
+		listFocusAndSelectionForeground: (style && style.listFocusAndSelectionForeground) || listActiveSelectionForeground,
 		listInactiveSelectionBackground: (style && style.listInactiveSelectionBackground) || listInactiveSelectionBackground,
 		listHoverBackground: (style && style.listHoverBackground) || listHoverBackground,
 		listDropBackground: (style && style.listDropBackground) || listDropBackground,
-		listFocusOutline: (style && style.listFocusOutline) || highContrastOutline,
-		listSelectionOutline: (style && style.listSelectionOutline) || highContrastOutline,
-		listHoverOutline: (style && style.listHoverOutline) || highContrastOutline
+		listFocusOutline: (style && style.listFocusOutline) || activeContrastBorder,
+		listSelectionOutline: (style && style.listSelectionOutline) || activeContrastBorder,
+		listHoverOutline: (style && style.listHoverOutline) || activeContrastBorder
 	});
 }
 
@@ -170,25 +175,25 @@ export function attachListStyler(widget: IThemable, themeService: IThemeService,
 }): IDisposable {
 	return attachStyler(themeService, widget, {
 		listFocusBackground: (style && style.listFocusBackground) || listFocusBackground,
-		listActiveSelectionBackground: (style && style.listActiveSelectionBackground) || listActiveSelectionBackground,
+		listActiveSelectionBackground: (style && style.listActiveSelectionBackground) || lighten(listActiveSelectionBackground, 0.1),
 		listActiveSelectionForeground: (style && style.listActiveSelectionForeground) || listActiveSelectionForeground,
-		listFocusAndSelectionBackground: (style && style.listFocusAndSelectionBackground) || listFocusAndSelectionBackground,
-		listFocusAndSelectionForeground: (style && style.listFocusAndSelectionForeground) || listFocusAndSelectionForeground,
-		listInactiveFocusBackground: (style && style.listInactiveFocusBackground) || listInactiveFocusBackground,
+		listFocusAndSelectionBackground: style && style.listFocusAndSelectionBackground || listActiveSelectionBackground,
+		listFocusAndSelectionForeground: (style && style.listFocusAndSelectionForeground) || listActiveSelectionForeground,
+		listInactiveFocusBackground: (style && style.listInactiveFocusBackground),
 		listInactiveSelectionBackground: (style && style.listInactiveSelectionBackground) || listInactiveSelectionBackground,
 		listHoverBackground: (style && style.listHoverBackground) || listHoverBackground,
 		listDropBackground: (style && style.listDropBackground) || listDropBackground,
-		listFocusOutline: (style && style.listFocusOutline) || highContrastOutline,
-		listSelectionOutline: (style && style.listSelectionOutline) || highContrastOutline,
-		listHoverOutline: (style && style.listHoverOutline) || highContrastOutline,
+		listFocusOutline: (style && style.listFocusOutline) || activeContrastBorder,
+		listSelectionOutline: (style && style.listSelectionOutline) || activeContrastBorder,
+		listHoverOutline: (style && style.listHoverOutline) || activeContrastBorder,
 		listInactiveFocusOutline: style && style.listInactiveFocusOutline // not defined by default, only opt-in
 	});
 }
 
-export function attachHeaderViewStyler(widget: IThemable, themeService: IThemeService, style?: { headerBackground?: ColorIdentifier, highContrastBorder?: ColorIdentifier }): IDisposable {
+export function attachHeaderViewStyler(widget: IThemable, themeService: IThemeService, style?: { headerBackground?: ColorIdentifier, contrastBorder?: ColorIdentifier }): IDisposable {
 	return attachStyler(themeService, widget, {
 		headerBackground: (style && style.headerBackground) || SIDE_BAR_SECTION_HEADER_BACKGROUND,
-		headerHighContrastBorder: (style && style.highContrastBorder) || highContrastBorder
+		headerHighContrastBorder: (style && style.contrastBorder) || contrastBorder
 	});
 }
 
