@@ -23,7 +23,7 @@ process.lazyEnv = new Promise(function (resolve) {
 	const handle = setTimeout(function () {
 		resolve();
 		console.warn('renderer did not receive lazyEnv in time')
-	}, 2000);
+	}, 10000);
 	ipc.once('vscode:acceptShellEnv', function (event, shellEnv) {
 		clearTimeout(handle);
 		assign(process.env, shellEnv);
@@ -148,7 +148,7 @@ function main() {
 
 	// disable pinch zoom & apply zoom level early to avoid glitches
 	const zoomLevel = configuration.zoomLevel;
-	webFrame.setZoomLevelLimits(1, 1);
+	webFrame.setVisualZoomLevelLimits(1, 1);
 	if (typeof zoomLevel === 'number' && zoomLevel !== 0) {
 		webFrame.setZoomLevel(zoomLevel);
 	}

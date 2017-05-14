@@ -41,7 +41,7 @@ const nodeModules = ['electron', 'original-fs']
 // Build
 
 const builtInExtensions = [
-	{ name: 'ms-vscode.node-debug', version: '1.12.14' },
+	{ name: 'ms-vscode.node-debug', version: '1.13.4' },
 	{ name: 'ms-vscode.node-debug2', version: '1.12.4' }
 ];
 
@@ -65,7 +65,6 @@ const vscodeResources = [
 	'out-build/vs/workbench/electron-browser/bootstrap/**',
 	'out-build/vs/workbench/parts/debug/**/*.json',
 	'out-build/vs/workbench/parts/execution/**/*.scpt',
-	'out-build/vs/workbench/parts/git/**/*.sh',
 	'out-build/vs/workbench/parts/html/browser/webview-pre.js',
 	'out-build/vs/**/markdown.css',
 	'out-build/vs/workbench/parts/tasks/**/*.json',

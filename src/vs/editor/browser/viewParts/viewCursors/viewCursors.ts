@@ -84,16 +84,14 @@ export class ViewCursors extends ViewPart {
 		if (e.readOnly) {
 			this._readOnly = this._context.configuration.editor.readOnly;
 		}
-		if (e.viewInfo.cursorBlinking) {
+		if (e.viewInfo) {
 			this._cursorBlinking = this._context.configuration.editor.viewInfo.cursorBlinking;
-		}
-		if (e.viewInfo.cursorStyle) {
 			this._cursorStyle = this._context.configuration.editor.viewInfo.cursorStyle;
 		}
 
 		this._primaryCursor.onConfigurationChanged(e);
 		this._updateBlinking();
-		if (e.viewInfo.cursorStyle || e.viewInfo.cursorBlinking) {
+		if (e.viewInfo) {
 			this._updateDomClassName();
 		}
 		for (let i = 0, len = this._secondaryCursors.length; i < len; i++) {
@@ -138,7 +136,7 @@ export class ViewCursors extends ViewPart {
 	}
 	public onDecorationsChanged(e: viewEvents.ViewDecorationsChangedEvent): boolean {
 		// true for inline decorations that can end up relayouting text
-		return true;//e.inlineDecorationsChanged;
+		return true;
 	}
 	public onFlushed(e: viewEvents.ViewFlushedEvent): boolean {
 		this._primaryCursor.onFlushed();
@@ -347,9 +345,9 @@ registerThemingParticipant((theme, collector) => {
 	let caret = theme.getColor(editorCursor);
 	if (caret) {
 		let oppositeCaret = caret.opposite();
-		collector.addRule(`.monaco-editor.${theme.selector} .cursor { background-color: ${caret}; border-color: ${caret}; color: ${oppositeCaret}; }`);
+		collector.addRule(`.monaco-editor .cursor { background-color: ${caret}; border-color: ${caret}; color: ${oppositeCaret}; }`);
 		if (theme.type === 'hc') {
-			collector.addRule(`.monaco-editor.${theme.selector} .cursors-layer.has-selection .cursor { border-left: 1px solid ${oppositeCaret}; border-right: 1px solid ${oppositeCaret}; }`);
+			collector.addRule(`.monaco-editor .cursors-layer.has-selection .cursor { border-left: 1px solid ${oppositeCaret}; border-right: 1px solid ${oppositeCaret}; }`);
 		}
 	}
 

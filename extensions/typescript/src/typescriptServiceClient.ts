@@ -153,7 +153,6 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 	private lastError: Error | null;
 	private reader: Reader<Proto.Response>;
 	private sequenceNumber: number;
-	private exitRequested: boolean;
 	private firstStart: number;
 	private lastStart: number;
 	private numberRestarts: number;
@@ -187,7 +186,6 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 		this.servicePromise = null;
 		this.lastError = null;
 		this.sequenceNumber = 0;
-		this.exitRequested = false;
 		this.firstStart = Date.now();
 		this.numberRestarts = 0;
 
@@ -225,7 +223,7 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 
 			if (this.servicePromise === null && (oldglobalTsdk !== this.globalTsdk || oldLocalTsdk !== this.localTsdk)) {
 				this.startService();
-			} else if (this.servicePromise !== null && (this.tsServerLogLevel !== oldLoggingLevel || (oldglobalTsdk !== this.globalTsdk || oldLocalTsdk !== this.localTsdk))) {
+			} else if (this.servicePromise !== null && (this.tsServerLogLevel !== oldLoggingLevel || oldglobalTsdk !== this.globalTsdk || oldLocalTsdk !== this.localTsdk)) {
 				this.restartTsServer();
 			}
 		}));
@@ -522,6 +520,11 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 					this.globalState.update(doGlobalVersionCheckKey, true);
 				}
 
+				this.sequenceNumber = 0;
+				this.requestQueue = [];
+				this.pendingResponses = 0;
+				this.lastError = null;
+
 				try {
 					let options: electron.IForkOptions = {
 						execArgv: [] // [`--debug-brk=5859`]
@@ -738,21 +741,12 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 				'TS Server has not started logging.')).then(() => false);
 		}
 
-		return workspace.openTextDocument(this.tsServerLogFile)
-			.then(doc => {
-				if (!doc) {
-					return false;
-				}
-				return window.showTextDocument(doc, window.activeTextEditor ? window.activeTextEditor.viewColumn : undefined)
-					.then(editor => !!editor);
-			}, () => false)
-			.then(didOpen => {
-				if (!didOpen) {
-					window.showWarningMessage(localize(
-						'openTsServerLog.openFileFailedFailed',
-						'Could not open TS Server log file'));
-				}
-				return didOpen;
+		return commands.executeCommand('_workbench.action.files.revealInOS', Uri.parse(this.tsServerLogFile))
+			.then(() => true, () => {
+				window.showWarningMessage(localize(
+					'openTsServerLog.openFileFailedFailed',
+					'Could not open TS Server log file'));
+				return false;
 			});
 	}
 
@@ -851,7 +845,7 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 			this.callbacks[parseInt(key)].e(new Error('Service died.'));
 		});
 		this.callbacks = Object.create(null);
-		if (!this.exitRequested && restart) {
+		if (restart) {
 			let diff = Date.now() - this.lastStart;
 			this.numberRestarts++;
 			let startService = true;
@@ -923,7 +917,8 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 		return Uri.file(filepath);
 	}
 
-	public execute(command: string, args: any, expectsResultOrToken?: boolean | CancellationToken, token?: CancellationToken): Promise<any> {
+	public execute(command: string, args: any, expectsResultOrToken?: boolean | CancellationToken): Promise<any> {
+		let token: CancellationToken | undefined = undefined;
 		let expectsResult = true;
 		if (typeof expectsResultOrToken === 'boolean') {
 			expectsResult = expectsResultOrToken;
@@ -931,13 +926,13 @@ export default class TypeScriptServiceClient implements ITypescriptServiceClient
 			token = expectsResultOrToken;
 		}
 
-		let request: Proto.Request = {
+		const request: Proto.Request = {
 			seq: this.sequenceNumber++,
 			type: 'request',
 			command: command,
 			arguments: args
 		};
-		let requestInfo: RequestItem = {
+		const requestInfo: RequestItem = {
 			request: request,
 			promise: null,
 			callbacks: null

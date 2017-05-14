@@ -2,7 +2,6 @@
 	"tokenColors": "./red.tmTheme",
 	"colors": {
 		// window
-		"activityBarBadge.background": "#DB7E58",
 		"activityBar.background": "#580000",
 		"tab.inactiveBackground": "#300a0a",
 		"tab.activeBackground": "#490000",
@@ -15,6 +14,7 @@
 		// editor
 		"editor.background": "#390000",
 		"editorGroup.border": "#ff666633",
+		"editorGroup.background": "#1c0101",
 		"editorCursor.foreground": "#970000",
 		"editor.foreground": "#F8F8F8",
 		"editorWhitespace.foreground": "#c10000",
@@ -35,20 +35,23 @@
 		// UI
 		"debugToolBar.background": "#660000",
 		"focusBorder": "#ff6666aa",
-		"button.background": "#885555",
+		"button.background": "#833",
 		"dropdown.background": "#580000",
 		"input.background": "#580000",
 		"inputOption.activeBorder": "#cc0000",
 		"inputValidation.infoBackground": "#550000",
-		"inputValidation.infoBorder": "#773333",
+		"inputValidation.infoBorder": "#DB7E58",
 		"list.hoverBackground": "#800000",
 		"list.activeSelectionBackground": "#880000",
 		"list.inactiveSelectionBackground": "#770000",
+		"list.dropBackground": "#662222",
 		"list.focusBackground": "#660000",
 		"list.highlightForeground": "#ff4444",
 		"notification.background": "#662222",
 		"pickerGroup.foreground": "#cc9999",
-		"pickerGroup.border": "#ff000033"
+		"pickerGroup.border": "#ff000033",
+		"badge.background": "#cc3333",
+		"progressBar.background": "#cc3333"
 	},
 	"name": "Red"
 }

@@ -303,15 +303,19 @@
 
 		"input.background": "#003847",
 		"input.foreground": "#93A1A1",
+		"input.placeholderForeground": "#93A1A1AA",
 		// "input.border": "",
 
 		"inputOption.activeBorder": "#2AA19899",
-		"inputValidation.infoBorder": "#384078",
-		"inputValidation.infoBackground": "#051336",
-		"inputValidation.warningBackground": "#5B7E7A",
-		"inputValidation.warningBorder": "#5B7E7A",
-		"inputValidation.errorBackground": "#A22D44",
-		"inputValidation.errorBorder": "#AB395B",
+		"inputValidation.infoBorder": "#363b5f",
+		"inputValidation.infoBackground": "#052730",
+		"inputValidation.warningBackground": "#5d5938",
+		"inputValidation.warningBorder": "#9d8a5e",
+		"inputValidation.errorBackground": "#571b26",
+		"inputValidation.errorBorder": "#a92049",
+
+		"badge.background": "#047aa6",
+		"progressBar.background": "#047aa6",
 
 		"dropdown.background": "#00212B",
 		"dropdown.border": "#2AA19899",
@@ -326,7 +330,7 @@
 		"list.hoverBackground": "#004454AA",
 		"list.inactiveSelectionBackground": "#00445488",
 		"list.dropBackground": "#00445488",
-		"list.highlightForeground": "#047aa6",
+		"list.highlightForeground": "#1ebcc5",
 
 		// "scrollbar.shadow": "",
 		// "scrollbarSlider.activeBackground": "",
@@ -397,7 +401,7 @@
 		// "editorGroupHeader.noTabsBackground": "",
 		"editorGroup.border": "#00212B",
 		"editorGroup.background": "#011b23",
-		"editorGroup.dropBackground": "#00212BAA",
+		"editorGroup.dropBackground": "#2AA19844",
 		"editorGroupHeader.tabsBackground": "#004052",
 
 		// Workbench: Tabs
@@ -409,7 +413,7 @@
 
 		// Workbench: Activity Bar
 		"activityBar.background": "#003847",
-		"activityBarBadge.background": "#047aa6",
+		// "activityBarBadge.background": "",
 		// "activityBar.dropBackground": "",
 		// "activityBar.foreground": "",
 		// "activityBarBadge.foreground": "",
@@ -447,24 +451,25 @@
 
 		// Workbench: Quick Open
 		"pickerGroup.foreground": "#2AA19899",
-		"pickerGroup.border": "#2AA19899"
+		"pickerGroup.border": "#2AA19899",
 
 		// Workbench: Terminal
-		// "terminal.ansiBlack": "",
-		// "terminal.ansiBlue": "",
-		// "terminal.ansiBrightBlack": "",
-		// "terminal.ansiBrightBlue": "",
-		// "terminal.ansiBrightCyan": "",
-		// "terminal.ansiBrightGreen": "",
-		// "terminal.ansiBrightMagenta": "",
-		// "terminal.ansiBrightRed": "",
-		// "terminal.ansiBrightWhite": "",
-		// "terminal.ansiBrightYellow": "",
-		// "terminal.ansiCyan": "",
-		// "terminal.ansiGreen": "",
-		// "terminal.ansiMagenta": "",
-		// "terminal.ansiRed": "",
-		// "terminal.ansiWhite": "",
-		// "terminal.ansiYellow": ""
+		// Colors sourced from the official palette http://ethanschoonover.com/solarized
+		"terminal.ansiBlack": "#262626",
+		"terminal.ansiBlue": "#0087ff",
+		"terminal.ansiBrightBlack": "#1c1c1c",
+		"terminal.ansiBrightBlue": "#808080",
+		"terminal.ansiBrightCyan": "#808080",
+		"terminal.ansiBrightGreen": "#585858",
+		"terminal.ansiBrightMagenta": "#5f5faf",
+		"terminal.ansiBrightRed": "#d75f00",
+		"terminal.ansiBrightWhite": "#808080",
+		"terminal.ansiBrightYellow": "#626262",
+		"terminal.ansiCyan": "#00afaf",
+		"terminal.ansiGreen": "#5f8700",
+		"terminal.ansiMagenta": "#af005f",
+		"terminal.ansiRed": "#d70000",
+		"terminal.ansiWhite": "#808080",
+		"terminal.ansiYellow": "#af8700"
 	}
 }

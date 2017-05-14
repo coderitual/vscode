@@ -3098,14 +3098,14 @@ suite('autoClosingPairs', () => {
 		}, (model, cursor) => {
 
 			let autoClosePositions = [
-				'var| a| =| [|];|',
-				'var| b| =| |`asd|`;|',
-				'var| c| =| !\'asd!\';|',
-				'var| d| =| |"asd|";|',
-				'var| e| =| /*3*/|	3;|',
-				'var| f| =| /**| 3| */3;|',
-				'var| g| =| (3+5|);|',
-				'var| h| =| {| a:| !\'value!\'| |};|',
+				'var a =| [|];|',
+				'var b =| |`asd`;|',
+				'var c =| !\'asd!\';|',
+				'var d =| |"asd";|',
+				'var e =| /*3*/|	3;|',
+				'var f =| /**| 3 */3;|',
+				'var g =| (3+5);|',
+				'var h =| {| a:| !\'value!\'| |};|',
 			];
 			for (let i = 0, len = autoClosePositions.length; i < len; i++) {
 				const lineNumber = i + 1;
@@ -3121,6 +3121,64 @@ suite('autoClosingPairs', () => {
 					}
 				}
 			}
+		});
+		mode.dispose();
+	});
+
+	test('issue #25658 - Do not auto-close single/double quotes after word characters', () => {
+		let mode = new AutoClosingMode();
+		usingCursor({
+			text: [
+				'',
+			],
+			languageIdentifier: mode.getLanguageIdentifier()
+		}, (model, cursor) => {
+
+			function typeCharacters(cursor: Cursor, chars: string): void {
+				for (let i = 0, len = chars.length; i < len; i++) {
+					cursorCommand(cursor, H.Type, { text: chars[i] }, 'keyboard');
+				}
+			}
+
+			// First gif
+			typeCharacters(cursor, 'teste1 = teste\' ok');
+			assert.equal(model.getLineContent(1), 'teste1 = teste\' ok');
+
+			cursor.setSelections('test', [new Selection(1, 1000, 1, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste2 = teste \'ok');
+			assert.equal(model.getLineContent(2), 'teste2 = teste \'ok\'');
+
+			cursor.setSelections('test', [new Selection(2, 1000, 2, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste3 = teste" ok');
+			assert.equal(model.getLineContent(3), 'teste3 = teste" ok');
+
+			cursor.setSelections('test', [new Selection(3, 1000, 3, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste4 = teste "ok');
+			assert.equal(model.getLineContent(4), 'teste4 = teste "ok"');
+
+			// Second gif
+			cursor.setSelections('test', [new Selection(4, 1000, 4, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste \'');
+			assert.equal(model.getLineContent(5), 'teste \'\'');
+
+			cursor.setSelections('test', [new Selection(5, 1000, 5, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste "');
+			assert.equal(model.getLineContent(6), 'teste ""');
+
+			cursor.setSelections('test', [new Selection(6, 1000, 6, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste\'');
+			assert.equal(model.getLineContent(7), 'teste\'');
+
+			cursor.setSelections('test', [new Selection(7, 1000, 7, 1000)]);
+			typeCharacters(cursor, '\n');
+			typeCharacters(cursor, 'teste"');
+			assert.equal(model.getLineContent(8), 'teste"');
 		});
 		mode.dispose();
 	});
@@ -3141,6 +3199,32 @@ suite('autoClosingPairs', () => {
 			cursorCommand(cursor, H.CompositionEnd, null, 'keyboard');
 
 			assert.equal(model.getValue(), 'è');
+		});
+		mode.dispose();
+	});
+
+	test('issue #2773: Accents (´`¨^, others?) are inserted in the wrong position (Mac)', () => {
+		let mode = new AutoClosingMode();
+		usingCursor({
+			text: [
+				'hello',
+				'world'
+			],
+			languageIdentifier: mode.getLanguageIdentifier()
+		}, (model, cursor) => {
+			assertCursor(cursor, new Position(1, 1));
+
+			// Typing ` and pressing shift+down on the mac US intl kb layout
+			// Here we're just replaying what the cursor gets
+			cursorCommand(cursor, H.CompositionStart, null, 'keyboard');
+			cursorCommand(cursor, H.Type, { text: '`' }, 'keyboard');
+			moveDown(cursor, true);
+			cursorCommand(cursor, H.ReplacePreviousChar, { replaceCharCnt: 1, text: '`' }, 'keyboard');
+			cursorCommand(cursor, H.ReplacePreviousChar, { replaceCharCnt: 1, text: '`' }, 'keyboard');
+			cursorCommand(cursor, H.CompositionEnd, null, 'keyboard');
+
+			assert.equal(model.getValue(), '`hello\nworld');
+			assertCursor(cursor, new Selection(1, 2, 2, 2));
 		});
 		mode.dispose();
 	});

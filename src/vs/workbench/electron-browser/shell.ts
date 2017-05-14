@@ -53,7 +53,7 @@ import { IntegrityServiceImpl } from 'vs/platform/integrity/node/integrityServic
 import { IIntegrityService } from 'vs/platform/integrity/common/integrity';
 import { EditorWorkerServiceImpl } from 'vs/editor/common/services/editorWorkerServiceImpl';
 import { IEditorWorkerService } from 'vs/editor/common/services/editorWorkerService';
-import { MainProcessExtensionService } from 'vs/workbench/api/node/mainThreadExtensionService';
+import { MainProcessExtensionService } from 'vs/workbench/api/electron-browser/mainThreadExtensionService';
 import { IOptions } from 'vs/workbench/common/options';
 import { IStorageService } from 'vs/platform/storage/common/storage';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -63,7 +63,7 @@ import { IContextViewService } from 'vs/platform/contextview/browser/contextView
 import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
 import { IMarkerService } from 'vs/platform/markers/common/markers';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { IMessageService, IChoiceService, Severity } from 'vs/platform/message/common/message';
+import { IMessageService, IChoiceService, Severity, CloseAction } from 'vs/platform/message/common/message';
 import { ChoiceChannel } from 'vs/platform/message/common/messageIpc';
 import { ISearchService } from 'vs/platform/search/common/search';
 import { IThreadService } from 'vs/workbench/services/thread/common/threadService';
@@ -97,14 +97,13 @@ import { MainProcessTextMateSyntax } from 'vs/editor/electron-browser/textMate/T
 import { BareFontInfo } from 'vs/editor/common/config/fontInfo';
 import { restoreFontInfo, readFontInfo, saveFontInfo } from 'vs/editor/browser/config/configuration';
 import * as browser from 'vs/base/browser/browser';
-import SCMPreview from 'vs/workbench/parts/scm/browser/scmPreview';
 import { readdir } from 'vs/base/node/pfs';
 import { join } from 'path';
 import 'vs/platform/opener/browser/opener.contribution';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import { WorkbenchThemeService } from 'vs/workbench/services/themes/electron-browser/workbenchThemeService';
 import { registerThemingParticipant, ITheme, ICssStyleCollector } from 'vs/platform/theme/common/themeService';
-import { foreground, focusBorder, scrollbarShadow, scrollbarSliderActiveBackground, scrollbarSliderBackground, scrollbarSliderHoverBackground, listHighlightForeground } from 'vs/platform/theme/common/colorRegistry';
+import { foreground, selectionBackground, focusBorder, scrollbarShadow, scrollbarSliderActiveBackground, scrollbarSliderBackground, scrollbarSliderHoverBackground, listHighlightForeground, inputPlaceholderForeground } from 'vs/platform/theme/common/colorRegistry';
 
 /**
  * Services that we require for the Shell
@@ -183,7 +182,7 @@ export class WorkbenchShell {
 			onWorkbenchStarted: (info: IWorkbenchStartedInfo) => {
 
 				// run workbench started logic
-				this.onWorkbenchStarted(info);
+				this.onWorkbenchStarted(instantiationService, info);
 
 				// start cached data manager
 				instantiationService.createInstance(NodeCachedDataManager);
@@ -206,7 +205,7 @@ export class WorkbenchShell {
 		return workbenchContainer;
 	}
 
-	private onWorkbenchStarted(info: IWorkbenchStartedInfo): void {
+	private onWorkbenchStarted(instantiationService: IInstantiationService, info: IWorkbenchStartedInfo): void {
 
 		// Telemetry: workspace info
 		const { filesToOpen, filesToCreate, filesToDiff } = this.options;
@@ -230,6 +229,12 @@ export class WorkbenchShell {
 		this.timerService.restoreViewletDuration = info.restoreViewletDuration;
 		this.extensionService.onReady().done(() => {
 			this.telemetryService.publicLog('startupTime', this.timerService.startupMetrics);
+
+			// Check for negative performance numbers (insiders only)
+			// TODO@Ben remove me
+			if (product.quality !== 'stable' && this.timerService.startupMetrics.ellapsed < 0) {
+				this.handleNegativePerformanceNumbers(instantiationService, this.timerService.startupMetrics.ellapsed);
+			}
 		});
 
 		// Telemetry: workspace tags
@@ -245,11 +250,9 @@ export class WorkbenchShell {
 		const { profileStartup } = this.environmentService;
 		if (profileStartup) {
 			this.extensionService.onReady().then(() => stopProfiling(profileStartup.dir, profileStartup.prefix)).then(() => {
-
 				readdir(profileStartup.dir).then(files => {
 					return files.filter(value => value.indexOf(profileStartup.prefix) === 0);
 				}).then(files => {
-
 					const profileFiles = files.reduce((prev, cur) => `${prev}${join(profileStartup.dir, cur)}\n`, '\n');
 
 					const primaryButton = this.messageService.confirm({
@@ -273,6 +276,16 @@ export class WorkbenchShell {
 
 			}, err => console.error(err));
 		}
+	}
+
+	private handleNegativePerformanceNumbers(i: IInstantiationService, time: number): void {
+		this.messageService.show(Severity.Warning, {
+			message: `Something went wrong measuring startup performance numbers (ellapsed: ${time}ms). We would like to learn more about this issue.`,
+			actions: [
+				i.createInstance(ReportPerformanceIssueAction, ReportPerformanceIssueAction.ID, ReportPerformanceIssueAction.LABEL),
+				CloseAction
+			]
+		});
 	}
 
 	private initServiceCollection(container: HTMLElement): [IInstantiationService, ServiceCollection] {
@@ -372,9 +385,7 @@ export class WorkbenchShell {
 
 		this.timerService.beforeExtensionLoad = Date.now();
 
-		// TODO@Joao: remove
-		const disabledExtensions = SCMPreview.enabled ? [] : ['vscode.git'];
-		this.extensionService = instantiationService.createInstance(MainProcessExtensionService, disabledExtensions);
+		this.extensionService = instantiationService.createInstance(MainProcessExtensionService);
 		serviceCollection.set(IExtensionService, this.extensionService);
 		extensionHostProcessWorker.start(this.extensionService);
 		this.extensionService.onReady().done(() => {
@@ -516,6 +527,19 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 	const windowForeground = theme.getColor(foreground);
 	if (windowForeground) {
 		collector.addRule(`.monaco-shell { color: ${windowForeground}; }`);
+	}
+
+	// Selection
+	const windowSelectionBackground = theme.getColor(selectionBackground);
+	if (windowSelectionBackground) {
+		collector.addRule(`.monaco-shell ::selection { background-color: ${windowSelectionBackground}; }`);
+	}
+
+	// Input placeholder
+	const placeholderForeground = theme.getColor(inputPlaceholderForeground);
+	if (placeholderForeground) {
+		collector.addRule(`.monaco-shell input::-webkit-input-placeholder { color: ${placeholderForeground}; }`);
+		collector.addRule(`.monaco-shell textarea::-webkit-input-placeholder { color: ${placeholderForeground}; }`);
 	}
 
 	// List highlight

@@ -134,17 +134,17 @@ export class ElectronWindow extends Themable {
 				// Find out if folders are dragged and show the appropiate feedback then
 				this.includesFolder(draggedExternalResources).done(includesFolder => {
 					if (includesFolder) {
-						const hcOutline = this.getColor(activeContrastBorder);
+						const activeContrastBorderColor = this.getColor(activeContrastBorder);
 						dropOverlay = $(window.document.getElementById(this.partService.getWorkbenchElementId()))
 							.div({
 								id: 'monaco-workbench-drop-overlay'
 							})
 							.style({
 								backgroundColor: this.getColor(EDITOR_DRAG_AND_DROP_BACKGROUND),
-								outlineColor: hcOutline,
-								outlineOffset: hcOutline ? '-2px' : null,
-								outlineStyle: hcOutline ? 'dashed' : null,
-								outlineWidth: hcOutline ? '2px' : null
+								outlineColor: activeContrastBorderColor,
+								outlineOffset: activeContrastBorderColor ? '-2px' : null,
+								outlineStyle: activeContrastBorderColor ? 'dashed' : null,
+								outlineWidth: activeContrastBorderColor ? '2px' : null
 							})
 							.on(DOM.EventType.DROP, (e: DragEvent) => {
 								DOM.EventHelper.stop(e, true);
@@ -321,7 +321,10 @@ export class ElectronWindow extends Themable {
 			if (webFrame.getZoomLevel() !== newZoomLevel) {
 				webFrame.setZoomLevel(newZoomLevel);
 				browser.setZoomFactor(webFrame.getZoomFactor());
-				browser.setZoomLevel(webFrame.getZoomLevel()); // Ensure others can listen to zoom level changes
+				// See https://github.com/Microsoft/vscode/issues/26151
+				// Cannot be trusted because the webFrame might take some time
+				// until it really applies the new zoom level
+				browser.setZoomLevel(webFrame.getZoomLevel(), /*isTrusted*/false);
 			}
 		});
 
@@ -461,7 +464,7 @@ export class ElectronWindow extends Themable {
 			newAutoSaveValue = AutoSaveConfiguration.AFTER_DELAY;
 		}
 
-		this.configurationEditingService.writeConfiguration(ConfigurationTarget.USER, { key: ElectronWindow.AUTO_SAVE_SETTING, value: newAutoSaveValue }).done(null, error => this.messageService.show(Severity.Error, error));
+		this.configurationEditingService.writeConfiguration(ConfigurationTarget.USER, { key: ElectronWindow.AUTO_SAVE_SETTING, value: newAutoSaveValue });
 	}
 
 	private includesFolder(resources: URI[]): TPromise<boolean> {

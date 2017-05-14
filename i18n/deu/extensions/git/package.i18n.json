@@ -11,7 +11,7 @@
 	"command.openFile": "Datei öffnen",
 	"command.stage": "Änderungen bereitstellen",
 	"command.stageAll": "Alle Änderungen bereitstellen",
-	"command.stageSelectedRanges": "Gewählte Bereiche staffeln",
+	"command.stageSelectedRanges": "Gewählte Bereiche bereitstellen",
 	"command.revertSelectedRanges": "Ausgewählte Bereiche zurücksetzen",
 	"command.unstage": "Bereitstellung der Änderungen aufheben",
 	"command.unstageAll": "Bereitstellung aller Änderungen aufheben",
@@ -20,7 +20,7 @@
 	"command.cleanAll": "Alle Änderungen verwerfen",
 	"command.commit": "Commit",
 	"command.commitStaged": "Commit bereitgestellt",
-	"command.commitStagedSigned": "Gestaffelt committen (abgemeldet)",
+	"command.commitStagedSigned": "Bereitgestelltes committen (unterzeichnet)",
 	"command.commitAll": "Commit für alle ausführen",
 	"command.commitAllSigned": "Alle committen (abgemeldet)",
 	"command.undoCommit": "Letzten Commit rückgängig machen",
@@ -39,6 +39,8 @@
 	"config.autofetch": "Gibt an, ob automatischer Abruf aktiviert ist.",
 	"config.enableLongCommitWarning": "Gibt an, ob Warnungen zu langen Commitnachrichten erfolgen sollen.",
 	"config.confirmSync": "Vor dem Synchronisieren von Git-Repositorys bestätigen.",
+	"config.countBadge": "Steuert die Git-Badgeanzahl. \"Alle\" zählt alle Änderungen. \"tracked\" (Nachverfolgt) zählt nur die nachverfolgten Änderungen. \"off\" (Aus) deaktiviert dies.",
+	"config.checkoutType": "Steuert, welcher Branchtyp beim Ausführen von \"Auschecken an...\" aufgelistet wird. \"Alle\" zeigt alle Verweise an, \"Lokal\" nur die lokalen Branches, \"Tags\" zeigt nur Tags an, und \"Remote\" zeigt nur Remotebranches an.",
 	"config.ignoreLegacyWarning": "Ignoriert die Legacy-Git-Warnung.",
 	"config.ignoreLimitWarning": "Ignoriert Warnung bei zu hoher Anzahl von Änderungen in einem Repository"
 }

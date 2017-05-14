@@ -65,7 +65,6 @@ export class SelectColorThemeAction extends Action {
 
 				this.themeService.setColorTheme(theme.id, target).done(null,
 					err => {
-						this.messageService.show(Severity.Info, localize('problemChangingTheme', "Problem setting theme: {0}", err));
 						this.themeService.setColorTheme(currentTheme.id, null);
 					}
 				);
@@ -198,7 +197,7 @@ class GenerateColorThemeAction extends Action {
 			colors: resultingColors,
 			tokenColors: theme.tokenColors
 		}, null, '\t');
-		return this.editorService.openEditor({ contents, language: 'json', filePath: 'custom-color-theme.json' });
+		return this.editorService.openEditor({ contents, language: 'json' });
 	}
 }
 

@@ -4,18 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import nls = require('vs/nls');
-import { registerColor, editorBackground, contrastBorder, transparent } from 'vs/platform/theme/common/colorRegistry';
+import { registerColor, editorBackground, contrastBorder, transparent, badgeForeground, badgeBackground } from 'vs/platform/theme/common/colorRegistry';
 import { IDisposable, Disposable, dispose } from 'vs/base/common/lifecycle';
 import { IThemeService, ITheme } from 'vs/platform/theme/common/themeService';
-import { Color, RGBA } from 'vs/base/common/color';
+import { Color } from 'vs/base/common/color';
 
 // < --- Tabs --- >
-
-export const TABS_CONTAINER_BACKGROUND = registerColor('editorGroupHeader.tabsBackground', {
-	dark: '#252526',
-	light: '#F3F3F3',
-	hc: null
-}, nls.localize('tabsContainerBackground', "Background color of the tabs container. Tabs are the containers for editors in the editor area. Multiple tabs can be opened in one editor group. There can be multiple editor groups."));
 
 export const TAB_ACTIVE_BACKGROUND = registerColor('tab.activeBackground', {
 	dark: editorBackground,
@@ -56,7 +50,13 @@ export const EDITOR_GROUP_BACKGROUND = registerColor('editorGroup.background', {
 	hc: null
 }, nls.localize('editorGroupBackground', "Background color of an editor group. Editor groups are the containers of editors. The background color shows up when dragging editor groups around."));
 
-export const EDITOR_GROUP_HEADER_BACKGROUND = registerColor('editorGroupHeader.noTabsBackground', {
+export const EDITOR_GROUP_HEADER_TABS_BACKGROUND = registerColor('editorGroupHeader.tabsBackground', {
+	dark: '#252526',
+	light: '#F3F3F3',
+	hc: null
+}, nls.localize('tabsContainerBackground', "Background color of the editor group title header when tabs are enabled. Editor groups are the containers of editors."));
+
+export const EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND = registerColor('editorGroupHeader.noTabsBackground', {
 	dark: editorBackground,
 	light: editorBackground,
 	hc: editorBackground
@@ -69,10 +69,10 @@ export const EDITOR_GROUP_BORDER_COLOR = registerColor('editorGroup.border', {
 }, nls.localize('editorGroupBorder', "Color to separate multiple editor groups from each other. Editor groups are the containers of editors."));
 
 export const EDITOR_DRAG_AND_DROP_BACKGROUND = registerColor('editorGroup.dropBackground', {
-	dark: Color.fromRGBA(new RGBA(83, 89, 93)).transparent(0.5),
-	light: Color.fromRGBA(new RGBA(51, 153, 255)).transparent(0.18),
+	dark: Color.fromHex('#53595D').transparent(0.5),
+	light: Color.fromHex('#3399FF').transparent(0.18),
 	hc: null
-}, nls.localize('editorDragAndDropBackground', "Background color when dragging editors around."));
+}, nls.localize('editorDragAndDropBackground', "Background color when dragging editors around. The color should have transparency so that the editor contents can still shine through."));
 
 
 
@@ -85,8 +85,8 @@ export const PANEL_BACKGROUND = registerColor('panel.background', {
 }, nls.localize('panelBackground', "Panel background color. Panels are shown below the editor area and contain views like output and integrated terminal."));
 
 export const PANEL_BORDER_COLOR = registerColor('panel.border', {
-	dark: Color.fromRGBA(new RGBA(128, 128, 128)).transparent(0.35),
-	light: Color.fromRGBA(new RGBA(128, 128, 128)).transparent(0.35),
+	dark: Color.fromHex('#808080').transparent(0.35),
+	light: Color.fromHex('#808080').transparent(0.35),
 	hc: contrastBorder
 }, nls.localize('panelBorder', "Panel border color on the top separating to the editor. Panels are shown below the editor area and contain views like output and integrated terminal."));
 
@@ -174,18 +174,18 @@ export const ACTIVITY_BAR_DRAG_AND_DROP_BACKGROUND = registerColor('activityBar.
 	dark: Color.white.transparent(0.12),
 	light: Color.white.transparent(0.12),
 	hc: Color.white.transparent(0.12),
-}, nls.localize('activityBarDragAndDropBackground', "Drag and drop feedback color for the activity bar items. The activity bar is showing on the far left or right and allows to switch between views of the side bar."));
+}, nls.localize('activityBarDragAndDropBackground', "Drag and drop feedback color for the activity bar items. The color should have transparency so that the activity bar entries can still shine through. The activity bar is showing on the far left or right and allows to switch between views of the side bar."));
 
 export const ACTIVITY_BAR_BADGE_BACKGROUND = registerColor('activityBarBadge.background', {
-	dark: '#007ACC',
-	light: '#007ACC',
-	hc: '#000000'
+	dark: badgeBackground,
+	light: badgeBackground,
+	hc: badgeBackground
 }, nls.localize('activityBarBadgeBackground', "Activity notification badge background color. The activity bar is showing on the far left or right and allows to switch between views of the side bar."));
 
 export const ACTIVITY_BAR_BADGE_FOREGROUND = registerColor('activityBarBadge.foreground', {
-	dark: Color.white,
-	light: Color.white,
-	hc: Color.white
+	dark: badgeForeground,
+	light: badgeForeground,
+	hc: badgeForeground
 }, nls.localize('activityBarBadgeForeground', "Activity notification badge foreground color. The activity bar is showing on the far left or right and allows to switch between views of the side bar."));
 
 

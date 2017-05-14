@@ -219,16 +219,16 @@ export class TabsTitleControl extends TitleControl {
 		element.style.backgroundColor = isDND ? this.getColor(EDITOR_DRAG_AND_DROP_BACKGROUND) : noDNDBackgroundColor;
 
 		// Outline
-		const hcOutline = this.getColor(activeContrastBorder);
-		if (hcOutline && isDND) {
+		const activeContrastBorderColor = this.getColor(activeContrastBorder);
+		if (activeContrastBorderColor && isDND) {
 			element.style.outlineWidth = '2px';
 			element.style.outlineStyle = 'dashed';
-			element.style.outlineColor = hcOutline;
+			element.style.outlineColor = activeContrastBorderColor;
 			element.style.outlineOffset = isTab ? '-5px' : '-3px';
 		} else {
 			element.style.outlineWidth = null;
 			element.style.outlineStyle = null;
-			element.style.outlineColor = hcOutline;
+			element.style.outlineColor = activeContrastBorderColor;
 			element.style.outlineOffset = null;
 		}
 	}
@@ -272,8 +272,8 @@ export class TabsTitleControl extends TitleControl {
 				// Container
 				tabContainer.setAttribute('aria-label', `${name}, tab`);
 				tabContainer.title = title;
-				tabContainer.style.borderLeftColor = (index !== 0) ? (this.getColor(contrastBorder) || this.getColor(TAB_BORDER)) : null;
-				tabContainer.style.borderRightColor = (index === editorsOfGroup.length - 1) ? (this.getColor(contrastBorder) || this.getColor(TAB_BORDER)) : null;
+				tabContainer.style.borderLeftColor = (index !== 0) ? (this.getColor(TAB_BORDER) || this.getColor(contrastBorder)) : null;;
+				tabContainer.style.borderRightColor = (index === editorsOfGroup.length - 1) ? (this.getColor(TAB_BORDER) || this.getColor(contrastBorder)) : null;;
 				tabContainer.style.outlineColor = this.getColor(activeContrastBorder);
 
 				const tabOptions = this.editorGroupService.getTabOptions();
@@ -313,11 +313,11 @@ export class TabsTitleControl extends TitleControl {
 					tabLabel.element.style.color = this.getColor(TAB_INACTIVE_FOREGROUND, (color, theme) => {
 						if (!isGroupActive) {
 							if (theme.type === 'dark') {
-								return color.transparent(0.5).transparent(0.5);
+								return color.transparent(0.5);
 							}
 
 							if (theme.type === 'light') {
-								return color.transparent(0.7).transparent(0.5);
+								return color.transparent(0.5);
 							}
 						}
 
@@ -521,7 +521,7 @@ export class TabsTitleControl extends TitleControl {
 			tab.blur();
 
 			const { editor, position } = this.toTabContext(index);
-			if (e.button === 0 /* Left Button */ && !DOM.findParentWithClass((e.target || e.srcElement) as HTMLElement, 'monaco-action-bar', 'tab')) {
+			if (e.button === 0 /* Left Button */ && !this.isTabActionBar((e.target || e.srcElement) as HTMLElement)) {
 				setTimeout(() => this.editorService.openEditor(editor, null, position).done(null, errors.onUnexpectedError)); // timeout to keep focus in editor after mouse up
 			}
 		}));
@@ -531,7 +531,7 @@ export class TabsTitleControl extends TitleControl {
 			DOM.EventHelper.stop(e);
 			tab.blur();
 
-			if (e.button === 1 /* Middle Button */) {
+			if (e.button === 1 /* Middle Button*/ && !this.isTabActionBar((e.target || e.srcElement) as HTMLElement)) {
 				this.closeEditorAction.run(this.toTabContext(index)).done(null, errors.onUnexpectedError);
 			}
 		}));
@@ -666,6 +666,10 @@ export class TabsTitleControl extends TitleControl {
 		return combinedDisposable(disposables);
 	}
 
+	private isTabActionBar(element: HTMLElement): boolean {
+		return !!DOM.findParentWithClass(element, 'monaco-action-bar', 'tab');
+	}
+
 	private toTabContext(index: number): { group: IEditorGroup, position: Position, editor: IEditorInput } {
 		const group = this.context;
 		const position = this.stacks.positionOfGroup(group);
@@ -759,8 +763,8 @@ class TabActionRunner extends ActionRunner {
 registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 
 	// Styling with Outline color (e.g. high contrast theme)
-	const outline = theme.getColor(activeContrastBorder);
-	if (outline) {
+	const activeContrastBorderColor = theme.getColor(activeContrastBorder);
+	if (activeContrastBorderColor) {
 		collector.addRule(`
 			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.active,
 			.monaco-workbench > .part.editor > .content > .one-editor-silo > .container > .title .tabs-container > .tab.active:hover  {

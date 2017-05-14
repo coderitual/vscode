@@ -32,6 +32,7 @@ import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { IPosition } from 'vs/editor/common/core/position';
 import { IEditorWhitespace } from 'vs/editor/common/viewLayout/whitespaceComputer';
 import { CoreEditorCommand } from 'vs/editor/common/controller/coreCommands';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 export abstract class CodeEditorWidget extends CommonCodeEditor implements editorBrowser.ICodeEditor {
 
@@ -70,6 +71,7 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 
 	private _codeEditorService: ICodeEditorService;
 	private _commandService: ICommandService;
+	private _themeService: IThemeService;
 
 	protected domElement: HTMLElement;
 	private _focusTracker: CodeEditorWidgetFocusTracker;
@@ -87,11 +89,13 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		@IInstantiationService instantiationService: IInstantiationService,
 		@ICodeEditorService codeEditorService: ICodeEditorService,
 		@ICommandService commandService: ICommandService,
-		@IContextKeyService contextKeyService: IContextKeyService
+		@IContextKeyService contextKeyService: IContextKeyService,
+		@IThemeService themeService: IThemeService
 	) {
 		super(domElement, options, instantiationService, contextKeyService);
 		this._codeEditorService = codeEditorService;
 		this._commandService = commandService;
+		this._themeService = themeService;
 
 		this._focusTracker = new CodeEditorWidgetFocusTracker(domElement);
 		this._focusTracker.onChage(() => {
@@ -187,92 +191,9 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		return this._view.domNode.domNode;
 	}
 
-	public getCenteredRangeInViewport(): Range {
-		if (!this.hasView) {
-			return null;
-		}
-		return this.viewModel.getCenteredRangeInViewport();
-	}
-
-	protected _getCompletelyVisibleViewRange(): Range {
-		if (!this.hasView) {
-			return null;
-		}
-		return this._view.getCompletelyVisibleViewRange();
-	}
-
-	protected _getCompletelyVisibleViewRangeAtScrollTop(scrollTop: number): Range {
-		if (!this.hasView) {
-			return null;
-		}
-		return this._view.getCompletelyVisibleViewRangeAtScrollTop(scrollTop);
-	}
-
-	protected _getVerticalOffsetForViewLineNumber(viewLineNumber: number): number {
-		if (!this.hasView) {
-			return 0;
-		}
-		return this._view.getVerticalOffsetForViewLineNumber(viewLineNumber);
-	}
-
 	public getCompletelyVisibleLinesRangeInViewport(): Range {
 		const viewRange = this._getCompletelyVisibleViewRange();
 		return this.viewModel.coordinatesConverter.convertViewRangeToModelRange(viewRange);
-	}
-
-	public getScrollWidth(): number {
-		if (!this.hasView) {
-			return -1;
-		}
-		return this._view.getScrollWidth();
-	}
-	public getScrollLeft(): number {
-		if (!this.hasView) {
-			return -1;
-		}
-		return this._view.getScrollLeft();
-	}
-
-	public getScrollHeight(): number {
-		if (!this.hasView) {
-			return -1;
-		}
-		return this._view.getScrollHeight();
-	}
-	public getScrollTop(): number {
-		if (!this.hasView) {
-			return -1;
-		}
-		return this._view.getScrollTop();
-	}
-
-	public setScrollLeft(newScrollLeft: number): void {
-		if (!this.hasView) {
-			return;
-		}
-		if (typeof newScrollLeft !== 'number') {
-			throw new Error('Invalid arguments');
-		}
-		this._view.setScrollPosition({
-			scrollLeft: newScrollLeft
-		});
-	}
-	public setScrollTop(newScrollTop: number): void {
-		if (!this.hasView) {
-			return;
-		}
-		if (typeof newScrollTop !== 'number') {
-			throw new Error('Invalid arguments');
-		}
-		this._view.setScrollPosition({
-			scrollTop: newScrollTop
-		});
-	}
-	public setScrollPosition(position: editorCommon.INewScrollPosition): void {
-		if (!this.hasView) {
-			return;
-		}
-		this._view.setScrollPosition(position);
 	}
 
 	public delegateVerticalScrollbarMouseDown(browserEvent: MouseEvent): void {
@@ -280,57 +201,6 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 			return;
 		}
 		this._view.delegateVerticalScrollbarMouseDown(browserEvent);
-	}
-
-	public saveViewState(): editorCommon.ICodeEditorViewState {
-		if (!this.cursor || !this.hasView) {
-			return null;
-		}
-		let contributionsState: { [key: string]: any } = {};
-
-		let keys = Object.keys(this._contributions);
-		for (let i = 0, len = keys.length; i < len; i++) {
-			let id = keys[i];
-			let contribution = this._contributions[id];
-			if (typeof contribution.saveViewState === 'function') {
-				contributionsState[id] = contribution.saveViewState();
-			}
-		}
-
-		let cursorState = this.cursor.saveState();
-		let viewState = this._view.saveState();
-		return {
-			cursorState: cursorState,
-			viewState: viewState,
-			contributionsState: contributionsState
-		};
-	}
-
-	public restoreViewState(s: editorCommon.ICodeEditorViewState): void {
-		if (!this.cursor || !this.hasView) {
-			return;
-		}
-		if (s && s.cursorState && s.viewState) {
-			let codeEditorState = <editorCommon.ICodeEditorViewState>s;
-			let cursorState = <any>codeEditorState.cursorState;
-			if (Array.isArray(cursorState)) {
-				this.cursor.restoreState(<editorCommon.ICursorState[]>cursorState);
-			} else {
-				// Backwards compatibility
-				this.cursor.restoreState([<editorCommon.ICursorState>cursorState]);
-			}
-			this._view.restoreState(codeEditorState.viewState);
-
-			let contributionsState = s.contributionsState || {};
-			let keys = Object.keys(this._contributions);
-			for (let i = 0, len = keys.length; i < len; i++) {
-				let id = keys[i];
-				let contribution = this._contributions[id];
-				if (typeof contribution.restoreViewState === 'function') {
-					contribution.restoreViewState(contributionsState[id]);
-				}
-			}
-		}
 	}
 
 	public layout(dimension?: editorCommon.IDimension): void {
@@ -445,7 +315,7 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		if (!this.hasView) {
 			return [];
 		}
-		return this._view.getWhitespaces();
+		return this.viewModel.viewLayout.getWhitespaces();
 	}
 
 	private _getVerticalOffsetForPosition(modelLineNumber: number, modelColumn: number): number {
@@ -454,7 +324,7 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 			column: modelColumn
 		});
 		let viewPosition = this.viewModel.coordinatesConverter.convertModelPositionToViewPosition(modelPosition);
-		return this._view.getVerticalOffsetForViewLineNumber(viewPosition.lineNumber);
+		return this.viewModel.viewLayout.getVerticalOffsetForLineNumber(viewPosition.lineNumber);
 	}
 
 	public getTopForLineNumber(lineNumber: number): number {
@@ -486,8 +356,8 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		let position = this.model.validatePosition(rawPosition);
 		let layoutInfo = this._configuration.editor.layoutInfo;
 
-		let top = this._getVerticalOffsetForPosition(position.lineNumber, position.column) - this._view.getScrollTop();
-		let left = this._view.getOffsetForColumn(position.lineNumber, position.column) + layoutInfo.glyphMarginWidth + layoutInfo.lineNumbersWidth + layoutInfo.decorationsWidth - this._view.getScrollLeft();
+		let top = this._getVerticalOffsetForPosition(position.lineNumber, position.column) - this.getScrollTop();
+		let left = this._view.getOffsetForColumn(position.lineNumber, position.column) + layoutInfo.glyphMarginWidth + layoutInfo.lineNumbersWidth + layoutInfo.decorationsWidth - this.getScrollLeft();
 
 		return {
 			top: top,
@@ -560,6 +430,7 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		this._view = new View(
 			this._commandService,
 			this._configuration,
+			this._themeService,
 			this.viewModel,
 			(editorCommand: CoreEditorCommand, args: any) => {
 				if (!this.cursor) {

@@ -130,6 +130,9 @@ export class SuggestController implements IEditorContribution {
 			let value = true;
 			if (
 				this._model.state === State.Auto
+				&& !item.suggestion.command
+				&& !item.suggestion.additionalTextEdits
+				&& item.suggestion.snippetType !== 'textmate'
 				&& endColumn - startColumn === item.suggestion.insertText.length
 			) {
 				const oldText = this._editor.getModel().getValueInRange({
@@ -219,7 +222,7 @@ export class SuggestController implements IEditorContribution {
 	cancelSuggestWidget(): void {
 		if (this._widget) {
 			this._model.cancel();
-			this._widget.hideDetailsOrHideWidget();
+			this._widget.hideWidget();
 		}
 	}
 
@@ -261,7 +264,7 @@ export class SuggestController implements IEditorContribution {
 
 	toggleSuggestionDetails(): void {
 		if (this._widget) {
-			this._widget.toggleDetails();
+			this._widget.toggleDetailsFocus();
 		}
 	}
 }
@@ -312,11 +315,11 @@ CommonEditorRegistry.registerEditorCommand(new SuggestCommand({
 
 CommonEditorRegistry.registerEditorCommand(new SuggestCommand({
 	id: 'acceptSelectedSuggestionOnEnter',
-	precondition: ContextKeyExpr.and(SuggestContext.Visible, SuggestContext.MakesTextEdit),
+	precondition: SuggestContext.Visible,
 	handler: x => x.acceptSelectedSuggestion(),
 	kbOpts: {
 		weight: weight,
-		kbExpr: ContextKeyExpr.and(EditorContextKeys.textFocus, SuggestContext.AcceptSuggestionsOnEnter),
+		kbExpr: ContextKeyExpr.and(EditorContextKeys.textFocus, SuggestContext.AcceptSuggestionsOnEnter, SuggestContext.MakesTextEdit),
 		primary: KeyCode.Enter
 	}
 }));

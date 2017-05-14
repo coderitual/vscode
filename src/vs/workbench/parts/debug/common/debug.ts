@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as nls from 'vs/nls';
 import uri from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import severity from 'vs/base/common/severity';
@@ -36,6 +37,11 @@ export const CONTEXT_VARIABLES_FOCUSED = new RawContextKey<boolean>('variablesFo
 
 export const EDITOR_CONTRIBUTION_ID = 'editor.contrib.debug';
 export const DEBUG_SCHEME = 'debug';
+export const INTERNAL_CONSOLE_OPTIONS_SCHEMA = {
+	enum: ['neverOpen', 'openOnSessionStart', 'openOnFirstSessionStart'],
+	default: 'openOnFirstSessionStart',
+	description: nls.localize('internalConsoleOptions', "Controls behavior of the internal debug console.")
+};
 
 // raw
 
@@ -174,9 +180,8 @@ export interface IScope extends IExpressionContainer {
 export interface IStackFrame extends ITreeElement {
 	thread: IThread;
 	name: string;
-	lineNumber: number;
-	column: number;
 	frameId: number;
+	range: IRange;
 	source: Source;
 	getScopes(): TPromise<IScope[]>;
 	getMostSpecificScopes(range: IRange): TPromise<IScope[]>;
@@ -200,7 +205,9 @@ export interface IRawBreakpoint {
 export interface IBreakpoint extends IEnablement {
 	uri: uri;
 	lineNumber: number;
+	endLineNumber?: number;
 	column: number;
+	endColumn?: number;
 	condition: string;
 	hitCondition: string;
 	verified: boolean;
@@ -294,6 +301,8 @@ export interface IDebugConfiguration {
 	openExplorerOnEnd: boolean;
 	inlineValues: boolean;
 	hideActionBar: boolean;
+	internalConsoleOptions: string;
+	variablesDelay: number;
 }
 
 export interface IGlobalConfig {
@@ -308,7 +317,7 @@ export interface IEnvConfig {
 	request: string;
 	internalConsoleOptions?: string;
 	preLaunchTask?: string;
-	__restart?: boolean;
+	__restart?: any;
 	debugServer?: number;
 	noDebug?: boolean;
 	port?: number;

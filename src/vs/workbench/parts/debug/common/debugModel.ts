@@ -250,15 +250,13 @@ export class Variable extends ExpressionContainer implements IExpression {
 
 	// Used to show the error message coming from the adapter when setting the value #7807
 	public errorMessage: string;
-	private static NOT_PROPERTY_SYNTAX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-	private static ARRAY_ELEMENT_SYNTAX = /\[.*\]$/;
 
 	constructor(
 		process: IProcess,
 		public parent: IExpressionContainer,
 		reference: number,
 		public name: string,
-		private _evaluateName: string,
+		public evaluateName: string,
 		value: string,
 		namedVariables: number,
 		indexedVariables: number,
@@ -268,35 +266,6 @@ export class Variable extends ExpressionContainer implements IExpression {
 	) {
 		super(process, reference, `variable:${parent.getId()}:${name}:${reference}`, namedVariables, indexedVariables, startOfVariables);
 		this.value = value;
-	}
-
-	public get evaluateName(): string {
-		if (this._evaluateName) {
-			return this._evaluateName;
-		}
-
-		// TODO@Isidor get rid of this ugly heuristic
-		let names = [this.name];
-		let v = this.parent;
-		while (v instanceof Variable || v instanceof Expression) {
-			names.push((<Variable>v).name);
-			v = (<Variable>v).parent;
-		}
-		names = names.reverse();
-
-		let result = null;
-		names.forEach(name => {
-			if (!result) {
-				result = name;
-			} else if (Variable.ARRAY_ELEMENT_SYNTAX.test(name) || (this.process.configuration.type === 'node' && !Variable.NOT_PROPERTY_SYNTAX.test(name))) {
-				// use safe way to access node properties a['property_name']. Also handles array elements.
-				result = name && name.indexOf('[') === 0 ? `${result}${name}` : `${result}['${name}']`;
-			} else {
-				result = `${result}.${name}`;
-			}
-		});
-
-		return result;
 	}
 
 	public setVariable(value: string): TPromise<any> {
@@ -342,8 +311,7 @@ export class StackFrame implements IStackFrame {
 		public frameId: number,
 		public source: Source,
 		public name: string,
-		public lineNumber: number,
-		public column: number
+		public range: IRange
 	) {
 		this.scopes = null;
 	}
@@ -372,8 +340,9 @@ export class StackFrame implements IStackFrame {
 				return scopes;
 			}
 
-			return [scopes.filter(scope => scope.range && Range.containsRange(scope.range, range))
-				.sort((first, second) => (first.range.endLineNumber - first.range.startLineNumber) - (second.range.endLineNumber - second.range.startLineNumber)).shift()];
+			const scopesContainingRange = scopes.filter(scope => scope.range && Range.containsRange(scope.range, range))
+				.sort((first, second) => (first.range.endLineNumber - first.range.startLineNumber) - (second.range.endLineNumber - second.range.startLineNumber));
+			return scopesContainingRange.length > 0 ? scopesContainingRange.slice(0, 1) : scopes;
 		});
 	}
 
@@ -382,7 +351,7 @@ export class StackFrame implements IStackFrame {
 	}
 
 	public toString(): string {
-		return `${this.name} (${this.source.inMemory ? this.source.name : this.source.uri.fsPath}:${this.lineNumber})`;
+		return `${this.name} (${this.source.inMemory ? this.source.name : this.source.uri.fsPath}:${this.range.startLineNumber})`;
 	}
 
 	public openInEditor(editorService: IWorkbenchEditorService, preserveFocus?: boolean, sideBySide?: boolean): TPromise<any> {
@@ -392,7 +361,7 @@ export class StackFrame implements IStackFrame {
 			description: this.source.origin,
 			options: {
 				preserveFocus,
-				selection: { startLineNumber: this.lineNumber, startColumn: 1 },
+				selection: { startLineNumber: this.range.startLineNumber, startColumn: 1 },
 				revealIfVisible: true,
 				revealInCenterIfOutsideViewport: true,
 				pinned: !preserveFocus
@@ -402,15 +371,17 @@ export class StackFrame implements IStackFrame {
 }
 
 export class Thread implements IThread {
-	private promisedCallStack: TPromise<IStackFrame[]>;
-	private cachedCallStack: IStackFrame[];
+	private fetchPromise: TPromise<void>;
+	private callStack: IStackFrame[];
+	private staleCallStack: IStackFrame[];
 	public stoppedDetails: IRawStoppedDetails;
 	public stopped: boolean;
 
 	constructor(public process: IProcess, public name: string, public threadId: number) {
-		this.promisedCallStack = null;
+		this.fetchPromise = null;
 		this.stoppedDetails = null;
-		this.cachedCallStack = null;
+		this.callStack = [];
+		this.staleCallStack = [];
 		this.stopped = false;
 	}
 
@@ -419,43 +390,48 @@ export class Thread implements IThread {
 	}
 
 	public clearCallStack(): void {
-		this.promisedCallStack = null;
-		this.cachedCallStack = null;
+		this.fetchPromise = null;
+		if (this.callStack.length) {
+			this.staleCallStack = this.callStack;
+		}
+		this.callStack = [];
 	}
 
 	public getCallStack(): IStackFrame[] {
-		return this.cachedCallStack;
+		return this.callStack;
+	}
+
+	public getStaleCallStack(): IStackFrame[] {
+		return this.staleCallStack;
 	}
 
 	/**
-	 * Queries the debug adapter for the callstack and returns a promise with
-	 * the stack frames of the callstack.
+	 * Queries the debug adapter for the callstack and returns a promise
+	 * which completes once the call stack has been retrieved.
 	 * If the thread is not stopped, it returns a promise to an empty array.
-	 * Only gets the first 20 stack frames. Calling this method consecutive times
-	 * with getAdditionalStackFrames = true gets the remainder of the call stack.
+	 * Only fetches the first stack frame for performance reasons. Calling this method consecutive times
+	 * gets the remainder of the call stack.
 	 */
-	public fetchCallStack(getAdditionalStackFrames = false): TPromise<IStackFrame[]> {
+	public fetchCallStack(): TPromise<void> {
 		if (!this.stopped) {
-			return TPromise.as([]);
+			return TPromise.as(null);
 		}
 
-		if (!this.promisedCallStack) {
-			this.promisedCallStack = this.getCallStackImpl(0).then(callStack => {
-				this.cachedCallStack = callStack;
-				return callStack;
+		if (!this.fetchPromise) {
+			this.fetchPromise = this.getCallStackImpl(0, 1).then(callStack => {
+				this.callStack = callStack || [];
 			});
-		} else if (getAdditionalStackFrames) {
-			this.promisedCallStack = this.promisedCallStack.then(callStackFirstPart => this.getCallStackImpl(callStackFirstPart.length).then(callStackSecondPart => {
-				this.cachedCallStack = callStackFirstPart.concat(callStackSecondPart);
-				return this.cachedCallStack;
+		} else {
+			this.fetchPromise = this.fetchPromise.then(() => this.getCallStackImpl(this.callStack.length, 20).then(callStackSecondPart => {
+				this.callStack = this.callStack.concat(callStackSecondPart);
 			}));
 		}
 
-		return this.promisedCallStack;
+		return this.fetchPromise;
 	}
 
-	private getCallStackImpl(startFrame: number): TPromise<IStackFrame[]> {
-		return this.process.session.stackTrace({ threadId: this.threadId, startFrame, levels: 20 }).then(response => {
+	private getCallStackImpl(startFrame: number, levels: number): TPromise<IStackFrame[]> {
+		return this.process.session.stackTrace({ threadId: this.threadId, startFrame, levels }).then(response => {
 			if (!response || !response.body) {
 				return [];
 			}
@@ -474,7 +450,12 @@ export class Thread implements IThread {
 					this.process.sources.set(source.uri.toString(), source);
 				}
 
-				return new StackFrame(this, rsf.id, source, rsf.name, rsf.line, rsf.column);
+				return new StackFrame(this, rsf.id, source, rsf.name, new Range(
+					rsf.line,
+					rsf.column,
+					rsf.endLine,
+					rsf.endColumn
+				));
 			});
 		}, (err: Error) => {
 			if (this.stoppedDetails) {
@@ -668,6 +649,8 @@ export class Breakpoint implements IBreakpoint {
 	public verified: boolean;
 	public idFromAdapter: number;
 	public message: string;
+	public endLineNumber: number;
+	public endColumn: number;
 	private id: string;
 
 	constructor(
@@ -677,7 +660,6 @@ export class Breakpoint implements IBreakpoint {
 		public enabled: boolean,
 		public condition: string,
 		public hitCondition: string,
-		public respectColumn: boolean // TODO@Isidor remove this in March
 	) {
 		if (enabled === undefined) {
 			this.enabled = true;
@@ -806,6 +788,12 @@ export class Model implements IModel {
 		}
 	}
 
+	public fetchCallStack(thread: IThread): TPromise<void> {
+		return (<Thread>thread).fetchCallStack().then(() => {
+			this._onDidChangeCallStack.fire();
+		});
+	}
+
 	public getBreakpoints(): Breakpoint[] {
 		return this.breakpoints;
 	}
@@ -838,8 +826,9 @@ export class Model implements IModel {
 
 	public addBreakpoints(uri: uri, rawData: IRawBreakpoint[]): void {
 		this.breakpoints = this.breakpoints.concat(rawData.map(rawBp =>
-			new Breakpoint(uri, rawBp.lineNumber, rawBp.column, rawBp.enabled, rawBp.condition, rawBp.hitCondition, true)));
+			new Breakpoint(uri, rawBp.lineNumber, rawBp.column, rawBp.enabled, rawBp.condition, rawBp.hitCondition)));
 		this.breakpointsActivated = true;
+		this.breakpoints = distinct(this.breakpoints, bp => `${bp.uri.toString()}:${bp.lineNumber}:${bp.column}`);
 		this._onDidChangeBreakpoints.fire();
 	}
 
@@ -853,12 +842,15 @@ export class Model implements IModel {
 			const bpData = data[bp.getId()];
 			if (bpData) {
 				bp.lineNumber = bpData.line ? bpData.line : bp.lineNumber;
+				bp.endLineNumber = bpData.endLine;
 				bp.column = bpData.column;
+				bp.endColumn = bpData.endColumn;
 				bp.verified = bpData.verified;
 				bp.idFromAdapter = bpData.id;
 				bp.message = bpData.message;
 			}
 		});
+		this.breakpoints = distinct(this.breakpoints, bp => `${bp.uri.toString()}:${bp.lineNumber}:${bp.column}`);
 
 		this._onDidChangeBreakpoints.fire();
 	}

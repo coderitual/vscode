@@ -11,7 +11,6 @@ import { ScrollbarVisibility } from 'vs/base/common/scrollable';
 import * as strings from 'vs/base/common/strings';
 import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { DefaultConfig } from 'vs/editor/common/config/defaultConfig';
 import { $, Dimension, Builder } from 'vs/base/browser/builder';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { EditorOptions } from 'vs/workbench/common/editor';
@@ -33,13 +32,13 @@ import { Scope } from 'vs/workbench/common/memento';
 import { RawContextKey, IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { once } from 'vs/base/common/event';
-import SCMPreview from 'vs/workbench/parts/scm/browser/scmPreview';
 import { isObject } from 'vs/base/common/types';
 import { ICommandService, CommandsRegistry } from 'vs/platform/commands/common/commands';
 import { ICodeEditorService } from 'vs/editor/common/services/codeEditorService';
 import { Parts, IPartService } from 'vs/workbench/services/part/common/partService';
 import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { IMessageService, Severity } from 'vs/platform/message/common/message';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 export const WALK_THROUGH_FOCUS = new RawContextKey<boolean>('interactivePlaygroundFocus', false);
 
@@ -70,9 +69,10 @@ class WalkThroughCodeEditor extends CodeEditor {
 		@IInstantiationService instantiationService: IInstantiationService,
 		@ICodeEditorService codeEditorService: ICodeEditorService,
 		@ICommandService commandService: ICommandService,
-		@IContextKeyService contextKeyService: IContextKeyService
+		@IContextKeyService contextKeyService: IContextKeyService,
+		@IThemeService themeService: IThemeService
 	) {
-		super(domElement, options, instantiationService, codeEditorService, commandService, contextKeyService);
+		super(domElement, options, instantiationService, codeEditorService, commandService, contextKeyService, themeService);
 	}
 
 	getTelemetryData() {
@@ -419,7 +419,13 @@ export class WalkThroughPart extends BaseEditor {
 		return {
 			...isObject(config) ? config : Object.create(null),
 			scrollBeyondLastLine: false,
-			scrollbar: DefaultConfig.editor.scrollbar,
+			scrollbar: {
+				verticalScrollbarSize: 14,
+				horizontal: 'auto',
+				useShadows: true,
+				verticalHasArrows: false,
+				horizontalHasArrows: false
+			},
 			overviewRulerLanes: 3,
 			fixedOverflowWidgets: true,
 			lineNumbersMinChars: 1,
@@ -430,7 +436,9 @@ export class WalkThroughPart extends BaseEditor {
 
 	private updateMarkerClasses() {
 		const innerContent = this.content.firstElementChild;
-		if (SCMPreview.enabled && innerContent) {
+
+		// TODO@christof
+		if (true && innerContent) {
 			innerContent.classList.add('scmEnabled');
 		}
 	}

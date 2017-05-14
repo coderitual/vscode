@@ -39,6 +39,7 @@ import pfs = require('vs/base/node/pfs');
 import colorThemeSchema = require('vs/workbench/services/themes/common/colorThemeSchema');
 import fileIconThemeSchema = require('vs/workbench/services/themes/common/fileIconThemeSchema');
 import { IDisposable } from 'vs/base/common/lifecycle';
+import { getParseErrorMessage } from "vs/base/common/jsonErrorMessages";
 
 // implementation
 
@@ -245,7 +246,6 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 			let initialTheme = new ColorThemeData();
 			initialTheme.id = isLightTheme ? VS_LIGHT_THEME : VS_DARK_THEME;
 			initialTheme.label = '';
-			initialTheme.selector = isLightTheme ? VS_LIGHT_THEME : VS_DARK_THEME;
 			initialTheme.settingsId = null;
 			initialTheme.isLoaded = false;
 			initialTheme.tokenColors = [{ settings: {} }];
@@ -407,6 +407,7 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 					if (themeId === this.currentColorTheme.id && !this.currentColorTheme.isLoaded && this.currentColorTheme.hasEqualData(themeData)) {
 						// the loaded theme is identical to the perisisted theme. Don't need to send an event.
 						this.currentColorTheme = themeData;
+						themeData.setCustomColors(this.colorCustomizations);
 						return TPromise.as(themeData);
 					}
 					themeData.setCustomColors(this.colorCustomizations);
@@ -752,7 +753,7 @@ function _loadIconThemeDocument(fileSetPath: string): TPromise<IconThemeDocument
 		let errors: Json.ParseError[] = [];
 		let contentValue = Json.parse(content.toString(), errors);
 		if (errors.length > 0) {
-			return TPromise.wrapError(new Error(nls.localize('error.cannotparseicontheme', "Problems parsing file icons file: {0}", errors.map(e => Json.getParseErrorMessage(e.error)).join(', '))));
+			return TPromise.wrapError(new Error(nls.localize('error.cannotparseicontheme', "Problems parsing file icons file: {0}", errors.map(e => getParseErrorMessage(e.error)).join(', '))));
 		}
 		return TPromise.as(contentValue);
 	});

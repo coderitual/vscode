@@ -6,7 +6,6 @@
 {
 	"selectTheme.label": "Tema de color",
 	"installColorThemes": "Instalar temas de color adicionales...",
-	"problemChangingTheme": "Problema al configurar el tema: {0}",
 	"themes.selectTheme": "Seleccionar tema de color",
 	"selectIconTheme.label": "Tema de icono de archivo",
 	"installIconThemes": "Instalar temas de icono de archivo adicionles...",
@@ -14,6 +13,7 @@
 	"noIconThemeDesc": "Deshabilitar iconos de archivo",
 	"problemChangingIconTheme": "Problema al configurar el tema de icono: {0}",
 	"themes.selectIconTheme": "Seleccionar tema de icono de archivo",
+	"generateColorTheme.label": "General el tema de color desde la configuración actual",
 	"preferences": "Preferencias",
 	"developer": "Desarrollador"
 }

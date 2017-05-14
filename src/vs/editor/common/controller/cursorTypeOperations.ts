@@ -16,6 +16,7 @@ import { LanguageConfigurationRegistry } from 'vs/editor/common/modes/languageCo
 import { IndentAction } from 'vs/editor/common/modes/languageConfiguration';
 import { SurroundSelectionCommand } from 'vs/editor/common/commands/surroundSelectionCommand';
 import { IElectricAction } from 'vs/editor/common/modes/supports/electricCharacter';
+import { getMapForWordSeparators, WordCharacterClass } from "vs/editor/common/controller/cursorWordOperations";
 
 export class TypeOperations {
 
@@ -227,6 +228,13 @@ export class TypeOperations {
 		let commands: CommandResult[] = [];
 		for (let i = 0, len = cursors.length; i < len; i++) {
 			const cursor = cursors[i];
+			if (!cursor.selection.isEmpty()) {
+				// looks like https://github.com/Microsoft/vscode/issues/2773
+				// where a cursor operation occured before a canceled composition
+				// => ignore composition
+				commands[i] = null;
+				continue;
+			}
 			let pos = cursor.position;
 			let startColumn = Math.max(1, pos.column - replaceCharCnt);
 			let range = new Range(pos.lineNumber, startColumn, pos.lineNumber, pos.column);
@@ -357,10 +365,20 @@ export class TypeOperations {
 
 			const position = cursor.position;
 			const lineText = model.getLineContent(position.lineNumber);
-			const afterCharacter = lineText.charAt(position.column - 1);
+
+			// Do not auto-close ' or " after a word character
+			if ((ch === '\'' || ch === '"') && position.column > 1) {
+				const wordSeparators = getMapForWordSeparators(config.wordSeparators);
+				const characterBeforeCode = lineText.charCodeAt(position.column - 2);
+				const characterBeforeType = wordSeparators.get(characterBeforeCode);
+				if (characterBeforeType === WordCharacterClass.Regular) {
+					return false;
+				}
+			}
 
 			// Only consider auto closing the pair if a space follows or if another autoclosed pair follows
-			if (afterCharacter) {
+			const characterAfter = lineText.charAt(position.column - 1);
+			if (characterAfter) {
 				const thisBraceIsSymmetric = (config.autoClosingPairsOpen[ch] === ch);
 
 				let isBeforeCloseBrace = false;
@@ -369,12 +387,12 @@ export class TypeOperations {
 					if (!thisBraceIsSymmetric && otherBraceIsSymmetric) {
 						continue;
 					}
-					if (afterCharacter === otherCloseBrace) {
+					if (characterAfter === otherCloseBrace) {
 						isBeforeCloseBrace = true;
 						break;
 					}
 				}
-				if (!isBeforeCloseBrace && !/\s/.test(afterCharacter)) {
+				if (!isBeforeCloseBrace && !/\s/.test(characterAfter)) {
 					return false;
 				}
 			}
