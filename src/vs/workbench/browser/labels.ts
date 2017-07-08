@@ -19,6 +19,8 @@ import { IConfigurationService } from 'vs/platform/configuration/common/configur
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
+import { IUntitledEditorService } from "vs/workbench/services/untitled/common/untitledEditorService";
+import { Schemas } from "vs/base/common/network";
 
 export interface IEditorLabel {
 	name: string;
@@ -60,7 +62,7 @@ export class ResourceLabel extends IconLabel {
 	}
 
 	public setLabel(label: IEditorLabel, options?: IResourceLabelOptions): void {
-		const hasResourceChanged = this.hasResourceChanged(label);
+		const hasResourceChanged = this.hasResourceChanged(label, options);
 
 		this.label = label;
 		this.options = options;
@@ -68,9 +70,16 @@ export class ResourceLabel extends IconLabel {
 		this.render(hasResourceChanged);
 	}
 
-	private hasResourceChanged(label: IEditorLabel): boolean {
+	private hasResourceChanged(label: IEditorLabel, options: IResourceLabelOptions): boolean {
 		const newResource = label ? label.resource : void 0;
 		const oldResource = this.label ? this.label.resource : void 0;
+
+		const newIsFolder = options ? options.isFolder : false;
+		const oldIsFolder = this.options ? this.options.isFolder : false;
+
+		if (newIsFolder !== oldIsFolder) {
+			return true; // same resource but different kind (file, folder)
+		}
 
 		if (newResource && oldResource) {
 			return newResource.toString() !== oldResource.toString();
@@ -162,11 +171,27 @@ export interface IFileLabelOptions extends IResourceLabelOptions {
 
 export class FileLabel extends ResourceLabel {
 
+	constructor(
+		container: HTMLElement,
+		options: IIconLabelCreationOptions,
+		@IExtensionService extensionService: IExtensionService,
+		@IWorkspaceContextService contextService: IWorkspaceContextService,
+		@IConfigurationService configurationService: IConfigurationService,
+		@IModeService modeService: IModeService,
+		@IModelService modelService: IModelService,
+		@IEnvironmentService environmentService: IEnvironmentService,
+		@IUntitledEditorService private untitledEditorService: IUntitledEditorService
+	) {
+		super(container, options, extensionService, contextService, configurationService, modeService, modelService, environmentService);
+	}
+
 	public setFile(resource: uri, options: IFileLabelOptions = Object.create(null)): void {
+		const hidePath = options.hidePath || (resource.scheme === Schemas.untitled && !this.untitledEditorService.hasAssociatedFilePath(resource));
+
 		this.setLabel({
 			resource,
 			name: !options.hideLabel ? paths.basename(resource.fsPath) : void 0,
-			description: !options.hidePath ? getPathLabel(paths.dirname(resource.fsPath), this.contextService, this.environmentService) : void 0
+			description: !hidePath ? getPathLabel(paths.dirname(resource.fsPath), this.contextService, this.environmentService) : void 0
 		}, options);
 	}
 }

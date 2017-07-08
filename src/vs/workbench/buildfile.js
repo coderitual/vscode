@@ -15,7 +15,7 @@ function createModuleDescription(name, exclude) {
 	return result;
 }
 
-exports.collectModules = function (excludes) {
+exports.collectModules = function () {
 	var modules = [
 		createModuleDescription('vs/workbench/parts/output/common/outputLinkComputer', ['vs/base/common/worker/simpleWorker', 'vs/editor/common/services/editorSimpleWorker']),
 
@@ -24,8 +24,11 @@ exports.collectModules = function (excludes) {
 		createModuleDescription('vs/workbench/services/search/node/searchApp', []),
 		createModuleDescription('vs/workbench/services/search/node/worker/searchWorkerApp', []),
 		createModuleDescription('vs/workbench/services/files/node/watcher/unix/watcherApp', []),
+		createModuleDescription('vs/workbench/services/files/node/watcher/nsfw/watcherApp', []),
 
-		createModuleDescription('vs/workbench/node/extensionHostProcess', [])
+		createModuleDescription('vs/workbench/node/extensionHostProcess', []),
+
+		createModuleDescription('vs/workbench/parts/terminal/node/terminalProcess', [])
 	];
 
 	return modules;

@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import * as Proto from '../protocol';
 
 export function plain(parts: Proto.SymbolDisplayPart[]): string {
@@ -39,6 +37,7 @@ function tagsPlainPreview(tags: Proto.JSDocTagInfo[]): string {
 }
 
 export function plainDocumentation(documentation: Proto.SymbolDisplayPart[], tags: Proto.JSDocTagInfo[]): string {
-	const parts = [plain(documentation), tagsPlainPreview(tags)];
+	const processedDocumentation = plain(documentation).replace(/\n([ \t]*\n)?/gm, (x) => x.length >= 2 ? '\n\n' : ' ');
+	const parts = [processedDocumentation, tagsPlainPreview(tags)];
 	return parts.filter(x => x).join('\n\n');
 }

@@ -313,7 +313,8 @@ export abstract class BaseEditorSimpleWorker {
 		let diffComputer = new DiffComputer(originalLines, modifiedLines, {
 			shouldPostProcessCharChanges: true,
 			shouldIgnoreTrimWhitespace: ignoreTrimWhitespace,
-			shouldConsiderTrimWhitespaceInEmptyCase: true
+			shouldConsiderTrimWhitespaceInEmptyCase: true,
+			shouldMakePrettyDiff: true
 		});
 		return TPromise.as(diffComputer.computeDiff());
 	}
@@ -330,7 +331,8 @@ export abstract class BaseEditorSimpleWorker {
 		let diffComputer = new DiffComputer(originalLines, modifiedLines, {
 			shouldPostProcessCharChanges: false,
 			shouldIgnoreTrimWhitespace: ignoreTrimWhitespace,
-			shouldConsiderTrimWhitespaceInEmptyCase: false
+			shouldConsiderTrimWhitespaceInEmptyCase: false,
+			shouldMakePrettyDiff: true
 		});
 		return TPromise.as(diffComputer.computeDiff());
 	}
@@ -377,7 +379,7 @@ export abstract class BaseEditorSimpleWorker {
 			}
 
 			// compute diff between original and edit.text
-			const changes = stringDiff(original, text);
+			const changes = stringDiff(original, text, false);
 			const editOffset = model.offsetAt(Range.lift(range).getStartPosition());
 
 			for (const change of changes) {
@@ -474,7 +476,7 @@ export abstract class BaseEditorSimpleWorker {
 	public loadForeignModule(moduleId: string, createData: any): TPromise<string[]> {
 		return new TPromise<any>((c, e) => {
 			// Use the global require to be sure to get the global config
-			(<any>self).require([moduleId], (foreignModule) => {
+			(<any>self).require([moduleId], (foreignModule: { create: (ctx: IWorkerContext, createData: any) => any; }) => {
 				let ctx: IWorkerContext = {
 					getMirrorModels: (): IMirrorModel[] => {
 						return this._getModels();

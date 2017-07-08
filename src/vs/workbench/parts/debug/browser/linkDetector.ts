@@ -47,7 +47,8 @@ export class LinkDetector {
 			while (match !== null) {
 				let resource: uri = null;
 				try {
-					resource = (match && !strings.startsWith(match[0], 'http')) && (match[2] ? uri.file(match[1]) : this.contextService.toResource(match[1]));
+					resource = (match && !strings.startsWith(match[0], 'http'))
+						&& (match[2] || strings.startsWith(match[1], '/') ? uri.file(match[1]) : this.contextService.toResource(match[1])); // TODO@Michel TODO@Isidor (https://github.com/Microsoft/vscode/issues/29190)
 				} catch (e) { }
 
 				if (!resource) {

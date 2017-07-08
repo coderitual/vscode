@@ -7,17 +7,29 @@
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { Color } from 'vs/base/common/color';
 import { IDisposable } from 'vs/base/common/lifecycle';
-import platform = require('vs/platform/platform');
+import platform = require('vs/platform/registry/common/platform');
 import { ColorIdentifier } from 'vs/platform/theme/common/colorRegistry';
 import Event, { Emitter } from 'vs/base/common/event';
 
-export let IThemeService = createDecorator<IThemeService>('themeService');
+export const IThemeService = createDecorator<IThemeService>('themeService');
+
+export interface ThemeColor {
+	id: string;
+}
 
 // base themes
-export const DARK = 'dark';
-export const LIGHT = 'light';
-export const HIGH_CONTRAST = 'hc';
+export const DARK: ThemeType = 'dark';
+export const LIGHT: ThemeType = 'light';
+export const HIGH_CONTRAST: ThemeType = 'hc';
 export type ThemeType = 'light' | 'dark' | 'hc';
+
+export function getThemeTypeSelector(type: ThemeType): string {
+	switch (type) {
+		case DARK: return 'vs-dark';
+		case HIGH_CONTRAST: return 'hc-black';
+		default: return 'vs';
+	}
+}
 
 export interface ITheme {
 	readonly type: ThemeType;

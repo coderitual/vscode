@@ -146,24 +146,30 @@ export class DecorationsOverlay extends DynamicViewOverlay {
 		let visibleStartLineNumber = ctx.visibleRange.startLineNumber;
 
 		for (let i = 0, lenI = decorations.length; i < lenI; i++) {
-			let d = decorations[i];
+			const d = decorations[i];
 
 			if (d.source.options.isWholeLine) {
 				continue;
 			}
 
-			let className = d.source.options.className;
+			const className = d.source.options.className;
+			const showIfCollapsed = d.source.options.showIfCollapsed;
 
-			let linesVisibleRanges = ctx.linesVisibleRangesForRange(d.range, /*TODO@Alex*/className === 'findMatch');
+			let range = d.range;
+			if (showIfCollapsed && range.endColumn === 1 && range.endLineNumber !== range.startLineNumber) {
+				range = new Range(range.startLineNumber, range.startColumn, range.endLineNumber - 1, this._context.model.getLineMaxColumn(range.endLineNumber - 1));
+			}
+
+			let linesVisibleRanges = ctx.linesVisibleRangesForRange(range, /*TODO@Alex*/className === 'findMatch');
 			if (!linesVisibleRanges) {
 				continue;
 			}
 
 			for (let j = 0, lenJ = linesVisibleRanges.length; j < lenJ; j++) {
 				let lineVisibleRanges = linesVisibleRanges[j];
-				let lineIndex = lineVisibleRanges.lineNumber - visibleStartLineNumber;
+				const lineIndex = lineVisibleRanges.lineNumber - visibleStartLineNumber;
 
-				if (lineVisibleRanges.ranges.length === 1) {
+				if (showIfCollapsed && lineVisibleRanges.ranges.length === 1) {
 					const singleVisibleRange = lineVisibleRanges.ranges[0];
 					if (singleVisibleRange.width === 0) {
 						// collapsed range case => make the decoration visible by faking its width
@@ -172,8 +178,8 @@ export class DecorationsOverlay extends DynamicViewOverlay {
 				}
 
 				for (let k = 0, lenK = lineVisibleRanges.ranges.length; k < lenK; k++) {
-					let visibleRange = lineVisibleRanges.ranges[k];
-					let decorationOutput = (
+					const visibleRange = lineVisibleRanges.ranges[k];
+					const decorationOutput = (
 						'<div class="cdr '
 						+ className
 						+ '" style="left:'

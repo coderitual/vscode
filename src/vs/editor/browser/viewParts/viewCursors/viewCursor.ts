@@ -12,6 +12,7 @@ import { Configuration } from 'vs/editor/browser/config/configuration';
 import { ViewContext } from 'vs/editor/common/view/viewContext';
 import { RenderingContext, RestrictedRenderingContext } from 'vs/editor/common/view/renderingContext';
 import * as viewEvents from 'vs/editor/common/view/viewEvents';
+import * as dom from 'vs/base/browser/dom';
 
 export interface IViewCursorRenderData {
 	domNode: HTMLElement;
@@ -72,8 +73,6 @@ export class ViewCursor {
 		this._domNode.setHeight(this._lineHeight);
 		this._domNode.setTop(0);
 		this._domNode.setLeft(0);
-		this._domNode.setAttribute('role', 'presentation');
-		this._domNode.setAttribute('aria-hidden', 'true');
 		Configuration.applyFontInfo(this._domNode, this._context.configuration.editor.fontInfo);
 		this._domNode.setDisplay('none');
 
@@ -130,12 +129,6 @@ export class ViewCursor {
 		return true;
 	}
 
-	public onFlushed(): boolean {
-		this.updatePosition(new Position(1, 1));
-		this._isInEditableRange = true;
-		return true;
-	}
-
 	private _prepareRender(ctx: RenderingContext): ViewCursorRenderData {
 		if (this._cursorStyle === TextEditorCursorStyle.Line || this._cursorStyle === TextEditorCursorStyle.LineThin) {
 			const visibleRange = ctx.visibleRangeForPosition(this._position);
@@ -145,9 +138,9 @@ export class ViewCursor {
 			}
 			let width: number;
 			if (this._cursorStyle === TextEditorCursorStyle.Line) {
-				width = 2;
+				width = dom.computeScreenAwareSize(2);
 			} else {
-				width = 1;
+				width = dom.computeScreenAwareSize(1);
 			}
 			const top = ctx.getVerticalOffsetForLineNumber(this._position.lineNumber) - ctx.bigNumbersDelta;
 			return new ViewCursorRenderData(top, visibleRange.left, width, '');

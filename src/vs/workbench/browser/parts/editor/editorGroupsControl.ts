@@ -31,12 +31,12 @@ import { TitleControl, ITitleAreaControl } from 'vs/workbench/browser/parts/edit
 import { NoTabsTitleControl } from 'vs/workbench/browser/parts/editor/noTabsTitleControl';
 import { IEditorStacksModel, IStacksModelChangeEvent, IEditorGroup, EditorOptions, TextEditorOptions, IEditorIdentifier } from 'vs/workbench/common/editor';
 import { extractResources } from 'vs/base/browser/dnd';
-import { IWindowService } from 'vs/platform/windows/common/windows';
+import { IWindowService, IWindowsService } from 'vs/platform/windows/common/windows';
 import { getCodeEditor } from 'vs/editor/common/services/codeEditorService';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { editorBackground, contrastBorder, activeContrastBorder } from 'vs/platform/theme/common/colorRegistry';
-import { Themable, EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_BORDER_COLOR, EDITOR_DRAG_AND_DROP_BACKGROUND, EDITOR_GROUP_BACKGROUND } from 'vs/workbench/common/theme';
-import { attachProgressBarStyler } from "vs/platform/theme/common/styler";
+import { Themable, EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_BORDER, EDITOR_DRAG_AND_DROP_BACKGROUND, EDITOR_GROUP_BACKGROUND, EDITOR_GROUP_HEADER_TABS_BORDER } from 'vs/workbench/common/theme';
+import { attachProgressBarStyler } from 'vs/platform/theme/common/styler';
 
 export enum Rochade {
 	NONE,
@@ -147,6 +147,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		@IExtensionService private extensionService: IExtensionService,
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IWindowService private windowService: IWindowService,
+		@IWindowsService private windowsService: IWindowsService,
 		@IThemeService themeService: IThemeService
 	) {
 		super(themeService);
@@ -1011,19 +1012,19 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			silo.style('background-color', this.getColor(editorBackground));
 
 			// Border
-			silo.style('border-left-color', index > Position.ONE ? (this.getColor(EDITOR_GROUP_BORDER_COLOR) || this.getColor(contrastBorder)) : null);
-			silo.style('border-top-color', index > Position.ONE ? (this.getColor(EDITOR_GROUP_BORDER_COLOR) || this.getColor(contrastBorder)) : null);
+			silo.style('border-left-color', index > Position.ONE ? (this.getColor(EDITOR_GROUP_BORDER) || this.getColor(contrastBorder)) : null);
+			silo.style('border-top-color', index > Position.ONE ? (this.getColor(EDITOR_GROUP_BORDER) || this.getColor(contrastBorder)) : null);
 		});
 
 		// Title control
 		POSITIONS.forEach(position => {
 			const container = this.getTitleAreaControl(position).getContainer();
-			const contrastBorderColor = this.getColor(contrastBorder);
+			const borderColor = this.getColor(EDITOR_GROUP_HEADER_TABS_BORDER) || this.getColor(contrastBorder);
 
 			container.style.backgroundColor = this.getColor(this.tabOptions.showTabs ? EDITOR_GROUP_HEADER_TABS_BACKGROUND : EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND);
-			container.style.borderBottomWidth = (contrastBorderColor && this.tabOptions.showTabs) ? '1px' : null;
-			container.style.borderBottomStyle = (contrastBorderColor && this.tabOptions.showTabs) ? 'solid' : null;
-			container.style.borderBottomColor = this.tabOptions.showTabs ? contrastBorderColor : null;
+			container.style.borderBottomWidth = (borderColor && this.tabOptions.showTabs) ? '1px' : null;
+			container.style.borderBottomStyle = (borderColor && this.tabOptions.showTabs) ? 'solid' : null;
+			container.style.borderBottomColor = this.tabOptions.showTabs ? borderColor : null;
 		});
 	}
 
@@ -1054,8 +1055,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			const activeEditor = $this.editorService.getActiveEditor();
 			const editor = getCodeEditor(activeEditor);
 			if (editor && activeEditor.position === stacks.positionOfGroup(identifier.group) && identifier.editor.matches(activeEditor.input)) {
-				options = TextEditorOptions.create({ pinned: true });
-				(<TextEditorOptions>options).fromEditor(editor);
+				options = TextEditorOptions.fromEditor(editor, { pinned: true });
 			}
 
 			return options;
@@ -1118,7 +1118,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 					// Add external ones to recently open list
 					const externalResources = droppedResources.filter(d => d.isExternal).map(d => d.resource);
 					if (externalResources.length) {
-						$this.windowService.addToRecentlyOpen(externalResources.map(resource => {
+						$this.windowsService.addToRecentlyOpen(externalResources.map(resource => {
 							return {
 								path: resource.fsPath,
 								isFile: true
@@ -1557,7 +1557,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		if (isDragging) {
 			this.parent.addClass('dragging');
 			silo.addClass('dragging');
-			borderColor = this.getColor(EDITOR_GROUP_BORDER_COLOR) || this.getColor(contrastBorder);
+			borderColor = this.getColor(EDITOR_GROUP_BORDER) || this.getColor(contrastBorder);
 		} else {
 			this.parent.removeClass('dragging');
 			silo.removeClass('dragging');

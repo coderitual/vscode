@@ -13,10 +13,10 @@ import { Position } from 'vs/editor/common/core/position';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import * as editorCommon from 'vs/editor/common/editorCommon';
 import { editorAction, commonEditorContribution, ServicesAccessor, EditorAction } from 'vs/editor/common/editorCommonExtensions';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
-import { registerThemingParticipant } from "vs/platform/theme/common/themeService";
-import { editorBracketMatchBackground, editorBracketMatchBorder } from "vs/editor/common/view/editorColorRegistry";
+import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
+import { editorBracketMatchBackground, editorBracketMatchBorder } from 'vs/editor/common/view/editorColorRegistry';
+import { ModelDecorationOptions } from 'vs/editor/common/model/textModelWithDecorations';
 
 @editorAction
 class SelectBracketAction extends EditorAction {
@@ -71,8 +71,7 @@ export class BracketMatchingController extends Disposable implements editorCommo
 	private _matchBrackets: boolean;
 
 	constructor(
-		editor: editorCommon.ICommonCodeEditor,
-		@IConfigurationService private configurationService: IConfigurationService
+		editor: editorCommon.ICommonCodeEditor
 	) {
 		super();
 		this._editor = editor;
@@ -83,7 +82,16 @@ export class BracketMatchingController extends Disposable implements editorCommo
 		this._matchBrackets = this._editor.getConfiguration().contribInfo.matchBrackets;
 
 		this._updateBracketsSoon.schedule();
-		this._register(editor.onDidChangeCursorPosition((e) => this._updateBracketsSoon.schedule()));
+		this._register(editor.onDidChangeCursorPosition((e) => {
+
+			if (!this._matchBrackets) {
+				// Early exit if nothing needs to be done!
+				// Leave some form of early exit check here if you wish to continue being a cursor position change listener ;)
+				return;
+			}
+
+			this._updateBracketsSoon.schedule();
+		}));
 		this._register(editor.onDidChangeModel((e) => { this._decorations = []; this._updateBracketsSoon.schedule(); }));
 		this._register(editor.onDidChangeConfiguration((e) => {
 			this._matchBrackets = this._editor.getConfiguration().contribInfo.matchBrackets;
@@ -129,10 +137,10 @@ export class BracketMatchingController extends Disposable implements editorCommo
 		}
 	}
 
-	private static _DECORATION_OPTIONS: editorCommon.IModelDecorationOptions = {
+	private static _DECORATION_OPTIONS = ModelDecorationOptions.register({
 		stickiness: editorCommon.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
 		className: 'bracket-match'
-	};
+	});
 
 	private _updateBrackets(): void {
 		if (!this._matchBrackets) {

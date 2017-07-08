@@ -68,7 +68,7 @@ export class LineContext {
 	readonly column: number;
 	readonly leadingLineContent: string;
 	readonly leadingWord: IWordAtPosition;
-	readonly auto;
+	readonly auto: boolean;
 
 	constructor(model: IModel, position: Position, auto: boolean) {
 		this.leadingLineContent = model.getLineContent(position.lineNumber).substr(0, position.column - 1);
@@ -199,7 +199,7 @@ export class SuggestModel implements IDisposable {
 						}
 					}
 				}
-				this.trigger(true, false, supports, items);
+				this.trigger(true, Boolean(this.completionModel), supports, items);
 			}
 		});
 	}
@@ -247,6 +247,12 @@ export class SuggestModel implements IDisposable {
 		if (!e.selection.isEmpty()
 			|| e.source !== 'keyboard'
 			|| e.reason !== CursorChangeReason.NotSet) {
+
+			if (this._state === State.Idle) {
+				// Early exit if nothing needs to be done!
+				// Leave some form of early exit check here if you wish to continue being a cursor position change listener ;)
+				return;
+			}
 
 			this.cancel();
 			return;
@@ -396,8 +402,8 @@ export class SuggestModel implements IDisposable {
 			return;
 		}
 
-		if (ctx.column > this.context.column && this.completionModel.incomplete) {
-			// typed -> moved cursor RIGHT & incomple model -> retrigger
+		if (ctx.column > this.context.column && this.completionModel.incomplete && ctx.leadingWord.word.length !== 0) {
+			// typed -> moved cursor RIGHT & incomple model & still on a word -> retrigger
 			const { complete, incomplete } = this.completionModel.resolveIncompleteInfo();
 			this.trigger(this._state === State.Auto, true, incomplete, complete);
 
@@ -423,6 +429,13 @@ export class SuggestModel implements IDisposable {
 					// freeze when IntelliSense was manually requested
 					this.completionModel.lineContext = oldLineContext;
 					isFrozen = this.completionModel.items.length > 0;
+
+					if (isFrozen && ctx.leadingWord.word.length === 0) {
+						// there were results before but now there aren't
+						// and also we are not on a word anymore -> cancel
+						this.cancel();
+						return;
+					}
 
 				} else {
 					// nothing left

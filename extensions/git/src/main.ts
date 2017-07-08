@@ -5,6 +5,8 @@
 
 'use strict';
 
+import * as nls from 'vscode-nls';
+const localize = nls.config(process.env.VSCODE_NLS_CONFIG)();
 import { ExtensionContext, workspace, window, Disposable, commands, Uri } from 'vscode';
 import { findGit, Git, IGit } from './git';
 import { Model } from './model';
@@ -13,13 +15,9 @@ import { CommandCenter } from './commands';
 import { StatusBarCommands } from './statusbar';
 import { GitContentProvider } from './contentProvider';
 import { AutoFetcher } from './autofetch';
-import { MergeDecorator } from './merge';
 import { Askpass } from './askpass';
 import { toDisposable } from './util';
 import TelemetryReporter from 'vscode-extension-telemetry';
-import * as nls from 'vscode-nls';
-
-const localize = nls.config(process.env.VSCODE_NLS_CONFIG)();
 
 async function init(context: ExtensionContext, disposables: Disposable[]): Promise<void> {
 	const { name, version, aiKey } = require(context.asAbsolutePath('./package.json')) as { name: string, version: string, aiKey: string };
@@ -58,14 +56,12 @@ async function init(context: ExtensionContext, disposables: Disposable[]): Promi
 	const provider = new GitSCMProvider(model, commandCenter, statusBarCommands);
 	const contentProvider = new GitContentProvider(model);
 	const autoFetcher = new AutoFetcher(model);
-	const mergeDecorator = new MergeDecorator(model);
 
 	disposables.push(
 		commandCenter,
 		provider,
 		contentProvider,
 		autoFetcher,
-		mergeDecorator,
 		model
 	);
 

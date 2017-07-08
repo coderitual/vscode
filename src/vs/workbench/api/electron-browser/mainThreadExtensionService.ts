@@ -13,13 +13,15 @@ import URI from 'vs/base/common/uri';
 import { AbstractExtensionService, ActivatedExtension } from 'vs/platform/extensions/common/abstractExtensionService';
 import { IMessage, IExtensionDescription, IExtensionsStatus } from 'vs/platform/extensions/common/extensions';
 import { IExtensionEnablementService } from 'vs/platform/extensionManagement/common/extensionManagement';
-import { areSameExtensions } from 'vs/platform/extensionManagement/common/extensionManagementUtil';
+import { areSameExtensions, getGloballyDisabledExtensions } from 'vs/platform/extensionManagement/common/extensionManagementUtil';
 import { ExtensionsRegistry, ExtensionPoint, IExtensionPointUser, ExtensionMessageCollector } from 'vs/platform/extensions/common/extensionsRegistry';
 import { ExtensionScanner, MessagesCollector } from 'vs/workbench/node/extensionPoints';
 import { IMessageService } from 'vs/platform/message/common/message';
 import { IThreadService } from 'vs/workbench/services/thread/common/threadService';
 import { ExtHostContext, ExtHostExtensionServiceShape } from '../node/extHost.protocol';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
+import { IStorageService } from 'vs/platform/storage/common/storage';
 
 const SystemExtensionsRoot = path.normalize(path.join(URI.parse(require.toUrl('')).fsPath, '..', 'extensions'));
 
@@ -50,8 +52,6 @@ const hasOwnProperty = Object.hasOwnProperty;
 
 export class MainProcessExtensionService extends AbstractExtensionService<ActivatedExtension> {
 
-	private _threadService: IThreadService;
-	private _messageService: IMessageService;
 	private _proxy: ExtHostExtensionServiceShape;
 	private _isDev: boolean;
 	private _extensionsStatus: { [id: string]: IExtensionsStatus };
@@ -60,59 +60,65 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 	 * This class is constructed manually because it is a service, so it doesn't use any ctor injection
 	 */
 	constructor(
-		@IThreadService threadService: IThreadService,
-		@IMessageService messageService: IMessageService,
-		@IEnvironmentService private environmentService: IEnvironmentService,
-		@IExtensionEnablementService extensionEnablementService: IExtensionEnablementService
+		@IThreadService private readonly _threadService: IThreadService,
+		@IMessageService private readonly _messageService: IMessageService,
+		@IEnvironmentService private readonly environmentService: IEnvironmentService,
+		@ITelemetryService private readonly _telemetryService: ITelemetryService,
+		@IExtensionEnablementService extensionEnablementService: IExtensionEnablementService,
+		@IStorageService storageService: IStorageService,
 	) {
 		super(false);
 		this._isDev = !environmentService.isBuilt || environmentService.isExtensionDevelopment;
 
-		this._messageService = messageService;
-		this._threadService = threadService;
 		this._proxy = this._threadService.get(ExtHostContext.ExtHostExtensionService);
 		this._extensionsStatus = {};
 
-		const disabledExtensions = [
-			...extensionEnablementService.getGloballyDisabledExtensions(),
-			...extensionEnablementService.getWorkspaceDisabledExtensions()
-		];
-
 		this.scanExtensions().done(extensionDescriptions => {
+			const disabledExtensions = [
+				...getGloballyDisabledExtensions(extensionEnablementService, storageService, extensionDescriptions),
+				...extensionEnablementService.getWorkspaceDisabledExtensions()
+			];
+
+			_telemetryService.publicLog('extensionsScanned', {
+				totalCount: extensionDescriptions.length,
+				disabledCount: disabledExtensions.length
+			});
+
 			this._onExtensionDescriptions(disabledExtensions.length ? extensionDescriptions.filter(e => disabledExtensions.every(id => !areSameExtensions({ id }, e))) : extensionDescriptions);
 		});
 	}
 
 	private _handleMessage(msg: IMessage) {
-		this._showMessage(msg.type, messageWithSource(msg));
 
 		if (!this._extensionsStatus[msg.source]) {
 			this._extensionsStatus[msg.source] = { messages: [] };
 		}
 		this._extensionsStatus[msg.source].messages.push(msg);
+
+		this.$localShowMessage(
+			msg.type, messageWithSource(msg),
+			this.environmentService.extensionDevelopmentPath === msg.source
+		);
+
+		if (!this._isDev && msg.extensionId) {
+			const { type, extensionId, extensionPointId, message } = msg;
+			this._telemetryService.publicLog('extensionsMessage', {
+				type, extensionId, extensionPointId, message
+			});
+		}
 	}
 
-	public $localShowMessage(severity: Severity, msg: string): void {
-		let messageShown = false;
-		if (severity === Severity.Error || severity === Severity.Warning) {
-			if (this._isDev) {
-				// Only show nasty intrusive messages if doing extension development.
-				this._messageService.show(severity, msg);
-				messageShown = true;
-			}
-		}
-
-		if (!messageShown) {
-			switch (severity) {
-				case Severity.Error:
-					console.error(msg);
-					break;
-				case Severity.Warning:
-					console.warn(msg);
-					break;
-				default:
-					console.log(msg);
-			}
+	public $localShowMessage(severity: Severity, msg: string, useMessageService: boolean = this._isDev): void {
+		// Only show nasty intrusive messages if doing extension development
+		// and print all other messages to the console
+		if (useMessageService && (severity === Severity.Error || severity === Severity.Warning)) {
+			this._messageService.show(severity, msg);
+		} else if (severity === Severity.Error) {
+			console.error(msg);
+		} else if (severity === Severity.Warning) {
+			console.warn(msg);
+		} else {
+			console.log(msg);
 		}
 	}
 
@@ -123,7 +129,6 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 	}
 
 	protected _showMessage(severity: Severity, msg: string): void {
-		this._proxy.$localShowMessage(severity, msg);
 		this.$localShowMessage(severity, msg);
 	}
 
@@ -167,7 +172,7 @@ export class MainProcessExtensionService extends AbstractExtensionService<Activa
 				users[usersLen++] = {
 					description: desc,
 					value: desc.contributes[extensionPoint.name],
-					collector: new ExtensionMessageCollector(messageHandler, desc.extensionFolderPath)
+					collector: new ExtensionMessageCollector(messageHandler, desc, extensionPoint.name)
 				};
 			}
 		}

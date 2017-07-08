@@ -37,7 +37,7 @@ export interface IPeekViewService {
 	isActive: boolean;
 }
 
-export function getOuterEditor(accessor: ServicesAccessor, args: any): ICommonCodeEditor {
+export function getOuterEditor(accessor: ServicesAccessor): ICommonCodeEditor {
 	let editor = accessor.get(ICodeEditorService).getFocusedCodeEditor();
 	if (editor instanceof EmbeddedCodeEditorWidget) {
 		return editor.getParentEditor();
@@ -169,6 +169,7 @@ export abstract class PeekViewWidget extends ZoneWidget implements IPeekViewServ
 
 	public setTitle(primaryHeading: string, secondaryHeading?: string): void {
 		$(this._primaryHeading).safeInnerHtml(primaryHeading);
+		this._primaryHeading.setAttribute('aria-label', primaryHeading);
 		if (secondaryHeading) {
 			$(this._secondaryHeading).safeInnerHtml(secondaryHeading);
 		} else {

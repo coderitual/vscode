@@ -19,9 +19,7 @@ if (process.argv.indexOf('--prof-startup') >= 0) {
 if (process.env.LC_ALL) {
 	process.env.LC_ALL = 'C';
 }
-if (process.env.LC_NUMERIC) {
-	process.env.LC_NUMERIC = 'C';
-}
+process.env.LC_NUMERIC = 'C';
 
 // Perf measurements
 global.perfStartTime = Date.now();
@@ -144,7 +142,7 @@ function getNodeCachedDataDir() {
 
 	var dir = path.join(app.getPath('userData'), 'CachedData', productJson.commit);
 
-	return mkdirp(dir).then(undefined, function (err) { /*ignore*/ });
+	return mkdirp(dir).then(undefined, function () { /*ignore*/ });
 }
 
 function mkdirp(dir) {
@@ -175,15 +173,8 @@ function mkdir(dir) {
 	});
 }
 
-// Because Spectron doesn't allow us to pass a custom user-data-dir,
-// Code receives two of them. Let's just take the first one.
-var userDataDir = args['user-data-dir'];
-if (userDataDir) {
-	userDataDir = typeof userDataDir === 'string' ? userDataDir : userDataDir[0];
-}
-
 // Set userData path before app 'ready' event and call to process.chdir
-var userData = path.resolve(userDataDir || paths.getDefaultUserDataPath(process.platform));
+var userData = path.resolve(args['user-data-dir'] || paths.getDefaultUserDataPath(process.platform));
 app.setPath('userData', userData);
 
 // Update cwd based on environment and platform
@@ -234,12 +225,13 @@ var nodeCachedDataDir = getNodeCachedDataDir().then(function (value) {
 	}
 });
 
-var nlsConfig = getNLSConfiguration();
-process.env['VSCODE_NLS_CONFIG'] = JSON.stringify(nlsConfig);
+// Load our code once ready
+app.once('ready', function () {
+	global.perfAppReady = Date.now();
+	var nlsConfig = getNLSConfiguration();
+	process.env['VSCODE_NLS_CONFIG'] = JSON.stringify(nlsConfig);
 
-var bootstrap = require('./bootstrap-amd');
-nodeCachedDataDir.then(function () {
-	bootstrap.bootstrap('vs/code/electron-main/main');
-}, function (err) {
-	console.error(err);
+	nodeCachedDataDir.then(function () {
+		require('./bootstrap-amd').bootstrap('vs/code/electron-main/main');
+	}, console.error);
 });

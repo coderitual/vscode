@@ -12,8 +12,8 @@ import { ServicesAccessor, IInstantiationService } from 'vs/platform/instantiati
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { IContextKey, IContextKeyServiceTarget, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { CommonEditorConfiguration } from 'vs/editor/common/config/commonEditorConfig';
-import { Cursor } from 'vs/editor/common/controller/cursor';
-import { CursorColumns, IViewModelHelper, ICursors } from 'vs/editor/common/controller/cursorCommon';
+import { Cursor, CursorStateChangedEvent } from 'vs/editor/common/controller/cursor';
+import { CursorColumns, ICursors, CursorConfiguration } from 'vs/editor/common/controller/cursorCommon';
 import { Position, IPosition } from 'vs/editor/common/core/position';
 import { Range, IRange } from 'vs/editor/common/core/range';
 import { Selection, ISelection } from 'vs/editor/common/core/selection';
@@ -26,8 +26,10 @@ import {
 	IModelLanguageChangedEvent, IModelOptionsChangedEvent, TextModelEventType
 } from 'vs/editor/common/model/textModelEvents';
 import * as editorOptions from 'vs/editor/common/config/editorOptions';
-import { CursorEventType, ICursorPositionChangedEvent, VerticalRevealType, ICursorSelectionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
+import { ICursorPositionChangedEvent, ICursorSelectionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
+import { CommonEditorRegistry } from 'vs/editor/common/editorCommonExtensions';
+import { VerticalRevealType } from 'vs/editor/common/view/viewEvents';
 
 let EDITOR_ID = 0;
 
@@ -241,34 +243,6 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 		return this.viewModel.getCenteredRangeInViewport();
 	}
 
-	protected _getCompletelyVisibleViewRange(): Range {
-		if (!this.hasView) {
-			return null;
-		}
-		const partialData = this.viewModel.viewLayout.getLinesViewportData();
-		const startViewLineNumber = partialData.completelyVisibleStartLineNumber;
-		const endViewLineNumber = partialData.completelyVisibleEndLineNumber;
-
-		return new Range(
-			startViewLineNumber, this.viewModel.getLineMinColumn(startViewLineNumber),
-			endViewLineNumber, this.viewModel.getLineMaxColumn(endViewLineNumber)
-		);
-	}
-
-	protected _getCompletelyVisibleViewRangeAtScrollTop(scrollTop: number): Range {
-		if (!this.hasView) {
-			return null;
-		}
-		const partialData = this.viewModel.viewLayout.getLinesViewportDataAtScrollTop(scrollTop);
-		const startViewLineNumber = partialData.completelyVisibleStartLineNumber;
-		const endViewLineNumber = partialData.completelyVisibleEndLineNumber;
-
-		return new Range(
-			startViewLineNumber, this.viewModel.getLineMinColumn(startViewLineNumber),
-			endViewLineNumber, this.viewModel.getLineMaxColumn(endViewLineNumber)
-		);
-	}
-
 	public getVisibleColumnFromPosition(rawPosition: IPosition): number {
 		if (!this.model) {
 			return rawPosition.column;
@@ -305,16 +279,17 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 		}
 	}
 
-	private _sendRevealRange(range: Range, verticalType: VerticalRevealType, revealHorizontal: boolean): void {
+	private _sendRevealRange(modelRange: Range, verticalType: VerticalRevealType, revealHorizontal: boolean): void {
 		if (!this.model || !this.cursor) {
 			return;
 		}
-		if (!Range.isIRange(range)) {
+		if (!Range.isIRange(modelRange)) {
 			throw new Error('Invalid arguments');
 		}
-		let validatedRange = this.model.validateRange(range);
+		const validatedModelRange = this.model.validateRange(modelRange);
+		const viewRange = this.viewModel.coordinatesConverter.convertModelRangeToViewRange(validatedModelRange);
 
-		this.cursor.emitCursorRevealRange(validatedRange, null, verticalType, revealHorizontal);
+		this.cursor.emitCursorRevealRange(viewRange, verticalType, revealHorizontal);
 	}
 
 	public revealLine(lineNumber: number): void {
@@ -693,6 +668,7 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 			return;
 		}
 
+		// Special case for pasting
 		if (handlerId === editorCommon.Handler.Paste) {
 			if (!this.cursor || typeof payload.text !== 'string' || payload.text.length === 0) {
 				// nothing to do
@@ -709,31 +685,37 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 			return;
 		}
 
-		let candidate = this.getAction(handlerId);
-		if (candidate !== null) {
-			TPromise.as(candidate.run()).done(null, onUnexpectedError);
-		} else {
-			if (!this.cursor) {
-				return;
-			}
-			this.cursor.trigger(source, handlerId, payload);
+		const action = this.getAction(handlerId);
+		if (action) {
+			TPromise.as(action.run()).done(null, onUnexpectedError);
+			return;
 		}
+
+		if (!this.cursor) {
+			return;
+		}
+
+		const command = CommonEditorRegistry.getEditorCommand(handlerId);
+		if (command) {
+			payload = payload || {};
+			payload.source = source;
+			TPromise.as(command.runEditorCommand(null, this, payload)).done(null, onUnexpectedError);
+			return;
+		}
+
+		this.cursor.trigger(source, handlerId, payload);
 	}
 
 	public _getCursors(): ICursors {
 		return this.cursor;
 	}
 
-	public executeCommand(source: string, command: editorCommon.ICommand): void {
-		if (!this.cursor) {
-			return;
-		}
-		this.cursor.trigger(source, editorCommon.Handler.ExecuteCommand, command);
+	public _getCursorConfiguration(): CursorConfiguration {
+		return this.cursor.context.config;
 	}
 
 	public pushUndoStop(): boolean {
-		if (!this.cursor) {
-			// no view, no cursor
+		if (!this.model) {
 			return false;
 		}
 		if (this._configuration.editor.readOnly) {
@@ -763,6 +745,13 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 		}
 
 		return true;
+	}
+
+	public executeCommand(source: string, command: editorCommon.ICommand): void {
+		if (!this.cursor) {
+			return;
+		}
+		this.cursor.trigger(source, editorCommon.Handler.ExecuteCommand, command);
 	}
 
 	public executeCommands(source: string, commands: editorCommon.ICommand[]): void {
@@ -869,27 +858,11 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 		if (this.model) {
 			this.domElement.setAttribute('data-mode-id', this.model.getLanguageIdentifier().language);
 			this._configuration.setIsDominatedByLongLines(this.model.isDominatedByLongLines());
+			this._configuration.setMaxLineNumber(this.model.getLineCount());
 
 			this.model.onBeforeAttached();
 
 			this.viewModel = new ViewModel(this.id, this._configuration, this.model);
-
-			let viewModelHelper: IViewModelHelper = {
-				viewModel: this.viewModel,
-				coordinatesConverter: this.viewModel.coordinatesConverter,
-				getScrollTop: (): number => {
-					return this.getScrollTop();
-				},
-				getCompletelyVisibleViewRange: (): Range => {
-					return this._getCompletelyVisibleViewRange();
-				},
-				getCompletelyVisibleViewRangeAtScrollTop: (scrollTop: number): Range => {
-					return this._getCompletelyVisibleViewRangeAtScrollTop(scrollTop);
-				},
-				getVerticalOffsetForViewLineNumber: (viewLineNumber: number): number => {
-					return this.viewModel.viewLayout.getVerticalOffsetForLineNumber(viewLineNumber);
-				}
-			};
 
 			this.listenersToRemove.push(this.model.addBulkListener((events) => {
 				for (let i = 0, len = events.length; i < len; i++) {
@@ -928,39 +901,39 @@ export abstract class CommonCodeEditor extends Disposable implements editorCommo
 			this.cursor = new Cursor(
 				this._configuration,
 				this.model,
-				viewModelHelper,
-				this._enableEmptySelectionClipboard()
+				this.viewModel
 			);
-
-			this.viewModel.addEventSource(this.cursor);
 
 			this._createView();
 
-			this.listenersToRemove.push(this.cursor.addBulkListener((events) => {
-				for (let i = 0, len = events.length; i < len; i++) {
-					let eventType = events[i].type;
-					let e = events[i].data;
+			this.listenersToRemove.push(this.cursor.onDidChange((e: CursorStateChangedEvent) => {
 
-					switch (eventType) {
-						case CursorEventType.CursorPositionChanged:
-							this._onDidChangeCursorPosition.fire(e);
-							break;
-
-						case CursorEventType.CursorSelectionChanged:
-							this._onDidChangeCursorSelection.fire(e);
-							break;
-
-						default:
-						// console.warn("Unhandled cursor event: ", e);
-					}
+				let positions: Position[] = [];
+				for (let i = 0, len = e.selections.length; i < len; i++) {
+					positions[i] = e.selections[i].getPosition();
 				}
+
+				const e1: ICursorPositionChangedEvent = {
+					position: positions[0],
+					secondaryPositions: positions.slice(1),
+					reason: e.reason,
+					source: e.source
+				};
+				this._onDidChangeCursorPosition.fire(e1);
+
+				const e2: ICursorSelectionChangedEvent = {
+					selection: e.selections[0],
+					secondarySelections: e.selections.slice(1),
+					source: e.source,
+					reason: e.reason
+				};
+				this._onDidChangeCursorSelection.fire(e2);
 			}));
+
 		} else {
 			this.hasView = false;
 		}
 	}
-
-	protected abstract _enableEmptySelectionClipboard(): boolean;
 
 	protected abstract _createView(): void;
 

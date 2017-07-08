@@ -6,12 +6,10 @@
 'use strict';
 
 import * as assert from 'assert';
-import { IHTMLContentElement } from 'vs/base/common/htmlContent';
 import { IKeyboardMapper } from 'vs/workbench/services/keybinding/common/keyboardMapper';
 import { Keybinding, ResolvedKeybinding, SimpleKeybinding } from 'vs/base/common/keyCodes';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { readFile, writeFile } from 'vs/base/node/pfs';
-import { OperatingSystem } from 'vs/base/common/platform';
 import { IKeyboardEvent } from 'vs/platform/keybinding/common/keybinding';
 import { ScanCodeBinding } from 'vs/workbench/services/keybinding/common/scanCode';
 
@@ -52,43 +50,12 @@ export function assertResolveUserBinding(mapper: IKeyboardMapper, firstPart: Sim
 	assert.deepEqual(actual, expected);
 }
 
-function _htmlPieces(pieces: string[], OS: OperatingSystem): IHTMLContentElement[] {
-	let children: IHTMLContentElement[] = [];
-	for (let i = 0, len = pieces.length; i < len; i++) {
-		if (i !== 0 && OS !== OperatingSystem.Macintosh) {
-			children.push({ tagName: 'span', text: '+' });
-		}
-		children.push({ tagName: 'span', className: 'monaco-kbkey', text: pieces[i] });
-	}
-	return children;
-}
-
-export function simpleHTMLLabel(pieces: string[], OS: OperatingSystem): IHTMLContentElement {
-	return {
-		tagName: 'span',
-		className: 'monaco-kb',
-		children: _htmlPieces(pieces, OS)
-	};
-}
-
-export function chordHTMLLabel(firstPart: string[], chordPart: string[], OS: OperatingSystem): IHTMLContentElement {
-	return {
-		tagName: 'span',
-		className: 'monaco-kb',
-		children: [].concat(
-			_htmlPieces(firstPart, OS),
-			[{ tagName: 'span', text: ' ' }],
-			_htmlPieces(chordPart, OS)
-		)
-	};
-}
-
 export function readRawMapping<T>(file: string): TPromise<T> {
 	return readFile(require.toUrl(`vs/workbench/services/keybinding/test/${file}.js`)).then((buff) => {
 		let contents = buff.toString();
 		let func = new Function('define', contents);
 		let rawMappings: T = null;
-		func(function (value) {
+		func(function (value: T) {
 			rawMappings = value;
 		});
 		return rawMappings;

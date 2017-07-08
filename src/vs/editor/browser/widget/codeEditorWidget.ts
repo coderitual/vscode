@@ -5,11 +5,9 @@
 'use strict';
 
 import 'vs/css!./media/editor';
-import 'vs/editor/common/view/editorColorRegistry'; // initialze editor theming partcicpants
 import 'vs/css!./media/tokens';
 import { onUnexpectedError } from 'vs/base/common/errors';
 import { TPromise } from 'vs/base/common/winjs.base';
-import * as browser from 'vs/base/browser/browser';
 import * as dom from 'vs/base/browser/dom';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ICommandService } from 'vs/platform/commands/common/commands';
@@ -22,7 +20,6 @@ import { EditorAction } from 'vs/editor/common/editorCommonExtensions';
 import { ICodeEditorService } from 'vs/editor/common/services/codeEditorService';
 import { Configuration } from 'vs/editor/browser/config/configuration';
 import * as editorBrowser from 'vs/editor/browser/editorBrowser';
-import { Colorizer } from 'vs/editor/browser/standalone/colorizer';
 import { View, IOverlayWidgetData, IContentWidgetData } from 'vs/editor/browser/view/viewImpl';
 import { Disposable } from 'vs/base/common/lifecycle';
 import Event, { Emitter } from 'vs/base/common/event';
@@ -32,7 +29,10 @@ import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { IPosition } from 'vs/editor/common/core/position';
 import { IEditorWhitespace } from 'vs/editor/common/viewLayout/whitespaceComputer';
 import { CoreEditorCommand } from 'vs/editor/common/controller/coreCommands';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
+import { editorErrorForeground, editorErrorBorder, editorWarningForeground, editorWarningBorder } from 'vs/editor/common/view/editorColorRegistry';
+import { Color } from 'vs/base/common/color';
+import { IMouseEvent } from 'vs/base/browser/mouseEvent';
 
 export abstract class CodeEditorWidget extends CommonCodeEditor implements editorBrowser.ICodeEditor {
 
@@ -98,7 +98,7 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		this._themeService = themeService;
 
 		this._focusTracker = new CodeEditorWidgetFocusTracker(domElement);
-		this._focusTracker.onChage(() => {
+		this._focusTracker.onChange(() => {
 			let hasFocus = this._focusTracker.hasFocus();
 
 			if (hasFocus) {
@@ -158,28 +158,6 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		super.dispose();
 	}
 
-	public updateOptions(newOptions: IEditorOptions): void {
-		let oldTheme = this._configuration.editor.viewInfo.theme;
-		super.updateOptions(newOptions);
-		let newTheme = this._configuration.editor.viewInfo.theme;
-
-		if (oldTheme !== newTheme) {
-			this.render();
-		}
-	}
-
-	public colorizeModelLine(lineNumber: number, model: editorCommon.IModel = this.model): string {
-		if (!model) {
-			return '';
-		}
-		let content = model.getLineContent(lineNumber);
-		model.forceTokenization(lineNumber);
-		let tokens = model.getLineTokens(lineNumber);
-		let inflatedTokens = tokens.inflate();
-		let tabSize = model.getOptions().tabSize;
-		return Colorizer.colorizeLine(content, model.mightContainRTL(), inflatedTokens, tabSize);
-	}
-
 	public createOverviewRuler(cssClassName: string, minimumHeight: number, maximumHeight: number): editorBrowser.IOverviewRuler {
 		return this._view.createOverviewRuler(cssClassName, minimumHeight, maximumHeight);
 	}
@@ -192,11 +170,14 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 	}
 
 	public getCompletelyVisibleLinesRangeInViewport(): Range {
-		const viewRange = this._getCompletelyVisibleViewRange();
+		if (!this.hasView) {
+			return null;
+		}
+		const viewRange = this.viewModel.getCompletelyVisibleViewRange();
 		return this.viewModel.coordinatesConverter.convertViewRangeToModelRange(viewRange);
 	}
 
-	public delegateVerticalScrollbarMouseDown(browserEvent: MouseEvent): void {
+	public delegateVerticalScrollbarMouseDown(browserEvent: IMouseEvent): void {
 		if (!this.hasView) {
 			return;
 		}
@@ -422,16 +403,13 @@ export abstract class CodeEditorWidget extends CommonCodeEditor implements edito
 		}
 	}
 
-	protected _enableEmptySelectionClipboard(): boolean {
-		return browser.enableEmptySelectionClipboard;
-	}
-
 	protected _createView(): void {
 		this._view = new View(
 			this._commandService,
 			this._configuration,
 			this._themeService,
 			this.viewModel,
+			this.cursor,
 			(editorCommand: CoreEditorCommand, args: any) => {
 				if (!this.cursor) {
 					return;
@@ -534,7 +512,7 @@ class CodeEditorWidgetFocusTracker extends Disposable {
 	private _domFocusTracker: dom.IFocusTracker;
 
 	private _onChange: Emitter<void> = this._register(new Emitter<void>());
-	public onChage: Event<void> = this._onChange.event;
+	public onChange: Event<void> = this._onChange.event;
 
 	constructor(domElement: HTMLElement) {
 		super();
@@ -556,3 +534,30 @@ class CodeEditorWidgetFocusTracker extends Disposable {
 		return this._hasFocus;
 	}
 }
+
+const squigglyStart = encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' height='3' width='6'><g fill='`);
+const squigglyEnd = encodeURIComponent(`'><polygon points='5.5,0 2.5,3 1.1,3 4.1,0'/><polygon points='4,0 6,2 6,0.6 5.4,0'/><polygon points='0,2 1,3 2.4,3 0,0.6'/></g></svg>`);
+
+function getSquigglySVGData(color: Color) {
+	return squigglyStart + encodeURIComponent(color.toString()) + squigglyEnd;
+}
+
+registerThemingParticipant((theme, collector) => {
+	let errorBorderColor = theme.getColor(editorErrorBorder);
+	if (errorBorderColor) {
+		collector.addRule(`.monaco-editor .redsquiggly { border-bottom: 4px double ${errorBorderColor}; }`);
+	}
+	let errorForeground = theme.getColor(editorErrorForeground);
+	if (errorForeground) {
+		collector.addRule(`.monaco-editor .redsquiggly { background: url("data:image/svg+xml,${getSquigglySVGData(errorForeground)}") repeat-x bottom left; }`);
+	}
+
+	let warningBorderColor = theme.getColor(editorWarningBorder);
+	if (warningBorderColor) {
+		collector.addRule(`.monaco-editor .greensquiggly { border-bottom: 4px double ${warningBorderColor}; }`);
+	}
+	let warningForeground = theme.getColor(editorWarningForeground);
+	if (warningForeground) {
+		collector.addRule(`.monaco-editor .greensquiggly { background: url("data:image/svg+xml;utf8,${getSquigglySVGData(warningForeground)}") repeat-x bottom left; }`);
+	}
+});

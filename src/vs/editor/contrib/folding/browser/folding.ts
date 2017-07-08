@@ -36,7 +36,7 @@ export class FoldingController implements IFoldingController {
 
 	private editor: ICodeEditor;
 	private _isEnabled: boolean;
-	private _hideFoldIcons: boolean;
+	private _showFoldingControls: 'always' | 'mouseover';
 	private globalToDispose: IDisposable[];
 
 	private computeToken: number;
@@ -49,7 +49,7 @@ export class FoldingController implements IFoldingController {
 	constructor(editor: ICodeEditor) {
 		this.editor = editor;
 		this._isEnabled = this.editor.getConfiguration().contribInfo.folding;
-		this._hideFoldIcons = this.editor.getConfiguration().contribInfo.hideFoldIcons;
+		this._showFoldingControls = this.editor.getConfiguration().contribInfo.showFoldingControls;
 
 		this.globalToDispose = [];
 		this.localToDispose = [];
@@ -63,9 +63,9 @@ export class FoldingController implements IFoldingController {
 			if (oldIsEnabled !== this._isEnabled) {
 				this.onModelChanged();
 			}
-			let oldHideFoldIcons = this._hideFoldIcons;
-			this._hideFoldIcons = this.editor.getConfiguration().contribInfo.hideFoldIcons;
-			if (oldHideFoldIcons !== this._hideFoldIcons) {
+			let oldShowFoldingControls = this._showFoldingControls;
+			this._showFoldingControls = this.editor.getConfiguration().contribInfo.showFoldingControls;
+			if (oldShowFoldingControls !== this._showFoldingControls) {
 				this.updateHideFoldIconClass();
 			}
 		}));
@@ -85,7 +85,7 @@ export class FoldingController implements IFoldingController {
 	private updateHideFoldIconClass(): void {
 		let domNode = this.editor.getDomNode();
 		if (domNode) {
-			dom.toggleClass(domNode, 'alwaysShowFoldIcons', this._hideFoldIcons === false);
+			dom.toggleClass(domNode, 'alwaysShowFoldIcons', this._showFoldingControls === 'always');
 		}
 	}
 
@@ -219,7 +219,16 @@ export class FoldingController implements IFoldingController {
 		this.localToDispose.push(this.cursorChangedScheduler);
 
 		this.localToDispose.push(this.editor.onDidChangeModelContent(e => this.contentChangedScheduler.schedule()));
-		this.localToDispose.push(this.editor.onDidChangeCursorPosition(e => this.cursorChangedScheduler.schedule()));
+		this.localToDispose.push(this.editor.onDidChangeCursorPosition((e) => {
+
+			if (!this._isEnabled) {
+				// Early exit if nothing needs to be done!
+				// Leave some form of early exit check here if you wish to continue being a cursor position change listener ;)
+				return;
+			}
+
+			this.cursorChangedScheduler.schedule();
+		}));
 		this.localToDispose.push(this.editor.onMouseDown(e => this.onEditorMouseDown(e)));
 		this.localToDispose.push(this.editor.onMouseUp(e => this.onEditorMouseUp(e)));
 
@@ -278,7 +287,7 @@ export class FoldingController implements IFoldingController {
 			return;
 		}
 		let range = e.target.range;
-		if (!range || !range.isEmpty) {
+		if (!range) {
 			return;
 		}
 		if (!e.event.leftButton) {
@@ -294,7 +303,7 @@ export class FoldingController implements IFoldingController {
 				break;
 			case MouseTargetType.CONTENT_EMPTY:
 			case MouseTargetType.CONTENT_TEXT:
-				if (range.isEmpty && range.startColumn === model.getLineMaxColumn(range.startLineNumber)) {
+				if (range.startColumn === model.getLineMaxColumn(range.startLineNumber)) {
 					break;
 				}
 				return;
@@ -313,7 +322,7 @@ export class FoldingController implements IFoldingController {
 		let iconClicked = this.mouseDownInfo.iconClicked;
 
 		let range = e.target.range;
-		if (!range || !range.isEmpty || range.startLineNumber !== lineNumber) {
+		if (!range || range.startLineNumber !== lineNumber) {
 			return;
 		}
 
@@ -531,7 +540,7 @@ interface FoldingArguments {
 	direction?: 'up' | 'down';
 }
 
-function foldingArgumentsConstraint(args) {
+function foldingArgumentsConstraint(args: any) {
 	if (!types.isUndefined(args)) {
 		if (!types.isObject(args)) {
 			return false;

@@ -1,8 +1,8 @@
+"use strict";
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var fs = require("fs");
 var path = require("path");
@@ -31,6 +31,9 @@ function bundle(entryPoints, config, callback) {
     r.call({}, require, loaderModule, loaderModule.exports);
     var loader = loaderModule.exports;
     config.isBuild = true;
+    config.paths = config.paths || {};
+    config.paths['vs/nls'] = 'out-build/vs/nls.build';
+    config.paths['vs/css'] = 'out-build/vs/css.build';
     loader.config(config);
     loader(['require'], function (localRequire) {
         var resolvePath = function (path) {

@@ -15,6 +15,8 @@ import { IDisposable } from 'vs/base/common/lifecycle';
 import * as viewEvents from 'vs/editor/common/view/viewEvents';
 import { OverviewRulerZone } from 'vs/editor/common/view/overviewZoneManager';
 import { editorOverviewRulerBorder, editorCursor } from 'vs/editor/common/view/editorColorRegistry';
+import { Color } from 'vs/base/common/color';
+import { ThemeColor } from 'vs/platform/theme/common/themeService';
 
 export class DecorationsOverviewRuler extends ViewPart {
 
@@ -45,7 +47,6 @@ export class DecorationsOverviewRuler extends ViewPart {
 			'decorationsOverviewRuler',
 			this._context.viewLayout.getScrollHeight(),
 			this._context.configuration.editor.lineHeight,
-			this._context.configuration.editor.canUseTranslate3d,
 			this._context.configuration.editor.pixelRatio,
 			DecorationsOverviewRuler.MIN_DECORATION_HEIGHT,
 			DecorationsOverviewRuler.MAX_DECORATION_HEIGHT,
@@ -100,10 +101,6 @@ export class DecorationsOverviewRuler extends ViewPart {
 			this._overviewRuler.setLineHeight(this._context.configuration.editor.lineHeight, false);
 		}
 
-		if (e.canUseTranslate3d) {
-			this._overviewRuler.setCanUseTranslate3d(this._context.configuration.editor.canUseTranslate3d, false);
-		}
-
 		if (e.pixelRatio) {
 			this._overviewRuler.setPixelRatio(this._context.configuration.editor.pixelRatio, false);
 		}
@@ -122,10 +119,12 @@ export class DecorationsOverviewRuler extends ViewPart {
 		return true;
 	}
 
-	public onCursorPositionChanged(e: viewEvents.ViewCursorPositionChangedEvent): boolean {
+	public onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): boolean {
 		this._shouldUpdateCursorPosition = true;
-		this._cursorPositions = [e.position];
-		this._cursorPositions = this._cursorPositions.concat(e.secondaryPositions);
+		this._cursorPositions = [];
+		for (let i = 0, len = e.selections.length; i < len; i++) {
+			this._cursorPositions[i] = e.selections[i].getPosition();
+		}
 		return true;
 	}
 
@@ -184,13 +183,21 @@ export class DecorationsOverviewRuler extends ViewPart {
 				dec.range.endLineNumber,
 				overviewRuler.position,
 				0,
-				overviewRuler.color,
-				overviewRuler.darkColor,
-				overviewRuler.hcColor
+				this.resolveRulerColor(overviewRuler.color),
+				this.resolveRulerColor(overviewRuler.darkColor),
+				this.resolveRulerColor(overviewRuler.hcColor)
 			));
 		}
 
 		return zones;
+	}
+
+	private resolveRulerColor(color: string | ThemeColor): string {
+		if (editorCommon.isThemeColor(color)) {
+			let c = this._context.theme.getColor(color.id) || Color.transparent;
+			return c.toString();
+		}
+		return color;
 	}
 
 	private _createZonesFromCursors(): OverviewRulerZone[] {

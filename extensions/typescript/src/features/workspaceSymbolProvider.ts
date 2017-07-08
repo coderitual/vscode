@@ -3,11 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import { workspace, window, Uri, WorkspaceSymbolProvider, SymbolInformation, SymbolKind, Range, Location, CancellationToken } from 'vscode';
-
-import * as path from 'path';
 
 import * as Proto from '../protocol';
 import { ITypescriptServiceClient } from '../typescriptService';
@@ -76,22 +72,12 @@ export default class TypeScriptWorkspaceSymbolProvider implements WorkspaceSymbo
 					if (item.kind === 'method' || item.kind === 'function') {
 						label += '()';
 					}
-					const containerNameParts: string[] = [];
-					if (item.containerName) {
-						containerNameParts.push(item.containerName);
-					}
-					const fileUri = this.client.asUrl(item.file);
-					const fileName = path.basename(fileUri.fsPath);
-					if (fileName) {
-						containerNameParts.push(fileName);
-					}
-					result.push(new SymbolInformation(label, getSymbolKind(item), containerNameParts.join(' — '),
-						new Location(fileUri, range)));
+					result.push(new SymbolInformation(label, getSymbolKind(item), item.containerName || '',
+						new Location(this.client.asUrl(item.file), range)));
 				}
 			}
 			return result;
-		}, (err) => {
-			this.client.error(`'navto' request failed with error.`, err);
+		}, () => {
 			return [];
 		});
 	}

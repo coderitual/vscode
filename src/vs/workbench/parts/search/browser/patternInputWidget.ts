@@ -6,6 +6,7 @@
 import nls = require('vs/nls');
 import * as dom from 'vs/base/browser/dom';
 import strings = require('vs/base/common/strings');
+import paths = require('vs/base/common/paths');
 import collections = require('vs/base/common/collections');
 import { $ } from 'vs/base/browser/builder';
 import { Widget } from 'vs/base/browser/ui/widget';
@@ -110,30 +111,24 @@ export class PatternInputWidget extends Widget {
 			return {};
 		}
 
-		const isSearchPath = segment => segment.match(/^\.\//);
-
 		let exprSegments: string[];
 		let searchPaths: string[];
 		if (isGlobPattern) {
 			const segments = splitGlobAware(pattern, ',')
-				.map(s => s.trim())
+				.map(s => strings.ltrim(s.trim(), './'))
 				.filter(s => !!s.length);
 
-			const groups = collections.groupBy(segments,
-				segment => isSearchPath(segment) ? 'searchPaths' : 'exprSegments');
-			searchPaths = groups.searchPaths || [];
-			exprSegments = groups.exprSegments || [];
+			const groups = this.groupByPathsAndExprSegments(segments);
+			searchPaths = groups.searchPaths;
+			exprSegments = groups.exprSegments;
 		} else {
 			const segments = pattern.split(',')
-				.map(s => strings.trim(s.trim(), '/'))
+				.map(s => strings.ltrim(s.trim(), './'))
 				.filter(s => !!s.length);
 
-			const groups = collections.groupBy(segments,
-				segment => isSearchPath(segment) ? 'searchPaths' : 'exprSegments');
-			searchPaths = groups.searchPaths || [];
-			exprSegments = groups.exprSegments || [];
-
-			exprSegments = exprSegments
+			const groups = this.groupByPathsAndExprSegments(segments);
+			searchPaths = groups.searchPaths;
+			exprSegments = groups.exprSegments
 				.map(p => {
 					if (p[0] === '.') {
 						p = '*' + p; // convert ".js" to "*.js"
@@ -145,6 +140,21 @@ export class PatternInputWidget extends Widget {
 
 		const expression = exprSegments.reduce((glob, cur) => { glob[cur] = true; return glob; }, Object.create(null));
 		return { expression, searchPaths };
+	}
+
+	private groupByPathsAndExprSegments(segments: string[]) {
+		const isSearchPath = (segment: string) => {
+			// An segment is a search path if it is an absolute path and doesn't contain any glob characters
+			return paths.isAbsolute(segment) && !segment.match(/[\*\{\}\(\)\[\]\?]/);
+		};
+
+		const groups = collections.groupBy(segments,
+			segment => isSearchPath(segment) ? 'searchPaths' : 'exprSegments');
+		groups.searchPaths = groups.searchPaths || [];
+		groups.exprSegments = (groups.exprSegments || [])
+			.map(segment => strings.trim(segment, '/'));
+
+		return groups;
 	}
 
 	public select(): void {

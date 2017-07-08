@@ -76,7 +76,7 @@ export enum Platform {
 	Windows
 }
 
-export let _platform: Platform = Platform.Web;
+let _platform: Platform = Platform.Web;
 if (_isNative) {
 	if (_isMacintosh) {
 		_platform = Platform.Mac;
@@ -142,3 +142,14 @@ export const enum OperatingSystem {
 	Linux = 3
 }
 export const OS = (_isMacintosh ? OperatingSystem.Macintosh : (_isWindows ? OperatingSystem.Windows : OperatingSystem.Linux));
+
+export const enum AccessibilitySupport {
+	/**
+	 * This should be the browser case where it is not known if a screen reader is attached or no.
+	 */
+	Unknown = 0,
+
+	Disabled = 1,
+
+	Enabled = 2
+}

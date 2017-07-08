@@ -18,7 +18,6 @@ import { IViewLines, HorizontalRange, LineVisibleRanges } from 'vs/editor/common
 import { Viewport } from 'vs/editor/common/viewModel/viewModel';
 import { ViewPart, PartFingerprint, PartFingerprints } from 'vs/editor/browser/view/viewPart';
 import * as viewEvents from 'vs/editor/common/view/viewEvents';
-import { VerticalRevealType } from 'vs/editor/common/controller/cursorEvents';
 
 class LastRenderedData {
 
@@ -39,10 +38,6 @@ class LastRenderedData {
 
 export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, IViewLines {
 	/**
-	 * Width to extends a line to render the line feed at the end of the line
-	 */
-	private static LINE_FEED_WIDTH = 10;
-	/**
 	 * Adds this ammount of pixels to the right of lines (no-one wants to type near the edge of the viewport)
 	 */
 	private static HORIZONTAL_EXTRA_PX = 30;
@@ -54,9 +49,10 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 
 	// --- config
 	private _lineHeight: number;
+	private _typicalHalfwidthCharacterWidth: number;
 	private _isViewportWrapping: boolean;
 	private _revealHorizontalRightPadding: number;
-	private _canUseTranslate3d: boolean;
+	private _canUseLayerHinting: boolean;
 	private _viewLineOptions: ViewLineOptions;
 
 	// --- width
@@ -73,15 +69,18 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 		this._visibleLines = new VisibleLinesCollection(this);
 		this.domNode = this._visibleLines.domNode;
 
-		this._lineHeight = this._context.configuration.editor.lineHeight;
-		this._isViewportWrapping = this._context.configuration.editor.wrappingInfo.isViewportWrapping;
-		this._revealHorizontalRightPadding = this._context.configuration.editor.viewInfo.revealHorizontalRightPadding;
-		this._canUseTranslate3d = this._context.configuration.editor.canUseTranslate3d;
-		this._viewLineOptions = new ViewLineOptions(this._context.configuration);
+		const conf = this._context.configuration;
+
+		this._lineHeight = conf.editor.lineHeight;
+		this._typicalHalfwidthCharacterWidth = conf.editor.fontInfo.typicalHalfwidthCharacterWidth;
+		this._isViewportWrapping = conf.editor.wrappingInfo.isViewportWrapping;
+		this._revealHorizontalRightPadding = conf.editor.viewInfo.revealHorizontalRightPadding;
+		this._canUseLayerHinting = conf.editor.canUseLayerHinting;
+		this._viewLineOptions = new ViewLineOptions(conf, this._context.theme.type);
 
 		PartFingerprints.write(this.domNode, PartFingerprint.ViewLines);
 		this.domNode.setClassName('view-lines');
-		Configuration.applyFontInfo(this.domNode, this._context.configuration.editor.fontInfo);
+		Configuration.applyFontInfo(this.domNode, conf.editor.fontInfo);
 
 		// --- width & height
 		this._maxLineWidth = 0;
@@ -119,23 +118,39 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 			this._maxLineWidth = 0;
 		}
 
+		const conf = this._context.configuration;
+
 		if (e.lineHeight) {
-			this._lineHeight = this._context.configuration.editor.lineHeight;
-		}
-		if (e.wrappingInfo) {
-			this._isViewportWrapping = this._context.configuration.editor.wrappingInfo.isViewportWrapping;
-		}
-		if (e.viewInfo) {
-			this._revealHorizontalRightPadding = this._context.configuration.editor.viewInfo.revealHorizontalRightPadding;
-		}
-		if (e.canUseTranslate3d) {
-			this._canUseTranslate3d = this._context.configuration.editor.canUseTranslate3d;
+			this._lineHeight = conf.editor.lineHeight;
 		}
 		if (e.fontInfo) {
-			Configuration.applyFontInfo(this.domNode, this._context.configuration.editor.fontInfo);
+			this._typicalHalfwidthCharacterWidth = conf.editor.fontInfo.typicalHalfwidthCharacterWidth;
+		}
+		if (e.wrappingInfo) {
+			this._isViewportWrapping = conf.editor.wrappingInfo.isViewportWrapping;
+		}
+		if (e.viewInfo) {
+			this._revealHorizontalRightPadding = conf.editor.viewInfo.revealHorizontalRightPadding;
+		}
+		if (e.canUseLayerHinting) {
+			this._canUseLayerHinting = conf.editor.canUseLayerHinting;
+		}
+		if (e.fontInfo) {
+			Configuration.applyFontInfo(this.domNode, conf.editor.fontInfo);
 		}
 
-		let newViewLineOptions = new ViewLineOptions(this._context.configuration);
+		this._onOptionsMaybeChanged();
+
+		if (e.layoutInfo) {
+			this._maxLineWidth = 0;
+		}
+
+		return true;
+	}
+	private _onOptionsMaybeChanged(): boolean {
+		const conf = this._context.configuration;
+
+		let newViewLineOptions = new ViewLineOptions(conf, this._context.theme.type);
 		if (!this._viewLineOptions.equals(newViewLineOptions)) {
 			this._viewLineOptions = newViewLineOptions;
 
@@ -145,13 +160,19 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 				let line = this._visibleLines.getVisibleLine(lineNumber);
 				line.onOptionsChanged(this._viewLineOptions);
 			}
+			return true;
 		}
 
-		if (e.layoutInfo) {
-			this._maxLineWidth = 0;
+		return false;
+	}
+	public onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): boolean {
+		let rendStartLineNumber = this._visibleLines.getStartLineNumber();
+		let rendEndLineNumber = this._visibleLines.getEndLineNumber();
+		let r = false;
+		for (let lineNumber = rendStartLineNumber; lineNumber <= rendEndLineNumber; lineNumber++) {
+			r = this._visibleLines.getVisibleLine(lineNumber).onSelectionChanged() || r;
 		}
-
-		return true;
+		return r;
 	}
 	public onDecorationsChanged(e: viewEvents.ViewDecorationsChangedEvent): boolean {
 		if (true/*e.inlineDecorationsChanged*/) {
@@ -200,6 +221,9 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 	}
 	public onZonesChanged(e: viewEvents.ViewZonesChangedEvent): boolean {
 		return this._visibleLines.onZonesChanged(e);
+	}
+	public onThemeChanged(e: viewEvents.ViewThemeChangedEvent): boolean {
+		return this._onOptionsMaybeChanged();
 	}
 
 	// ---- end view event handlers
@@ -322,7 +346,7 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 				nextLineModelLineNumber = this._context.model.coordinatesConverter.convertViewPositionToModelPosition(new Position(lineNumber + 1, 1)).lineNumber;
 
 				if (currentLineModelLineNumber !== nextLineModelLineNumber) {
-					visibleRangesForLine[visibleRangesForLine.length - 1].width += ViewLines.LINE_FEED_WIDTH;
+					visibleRangesForLine[visibleRangesForLine.length - 1].width += this._typicalHalfwidthCharacterWidth;
 				}
 			}
 
@@ -406,17 +430,14 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 		throw new Error('Not supported');
 	}
 
-	public renderText(viewportData: ViewportData, onAfterLinesRendered: () => void): void {
+	public renderText(viewportData: ViewportData): void {
 		// (1) render lines - ensures lines are in the DOM
 		this._visibleLines.renderLines(viewportData);
 		this._lastRenderedData.setCurrentVisibleRange(viewportData.visibleRange);
 		this.domNode.setWidth(this._context.viewLayout.getScrollWidth());
 		this.domNode.setHeight(Math.min(this._context.viewLayout.getScrollHeight(), 1000000));
 
-		// (2) execute DOM writing that forces sync layout (e.g. textArea manipulation)
-		onAfterLinesRendered();
-
-		// (3) compute horizontal scroll position:
+		// (2) compute horizontal scroll position:
 		//  - this must happen after the lines are in the DOM since it might need a line that rendered just now
 		//  - it might change `scrollWidth` and `scrollLeft`
 		if (this._lastCursorRevealRangeHorizontallyEvent) {
@@ -441,18 +462,11 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 			});
 		}
 
-		// (4) handle scrolling
+		// (3) handle scrolling
+		this._linesContent.setLayerHinting(this._canUseLayerHinting);
 		const adjustedScrollTop = this._context.viewLayout.getScrollTop() - viewportData.bigNumbersDelta;
-		if (this._canUseTranslate3d) {
-			let transform = 'translate3d(' + -this._context.viewLayout.getScrollLeft() + 'px, ' + -adjustedScrollTop + 'px, 0px)';
-			this._linesContent.setTransform(transform);
-			this._linesContent.setTop(0);
-			this._linesContent.setLeft(0);
-		} else {
-			this._linesContent.setTransform('');
-			this._linesContent.setTop(-adjustedScrollTop);
-			this._linesContent.setLeft(-this._context.viewLayout.getScrollLeft());
-		}
+		this._linesContent.setTop(-adjustedScrollTop);
+		this._linesContent.setLeft(-this._context.viewLayout.getScrollLeft());
 
 		// Update max line width (not so important, it is just so the horizontal scrollbar doesn't get too small)
 		this._asyncUpdateLineWidths.schedule();
@@ -468,7 +482,7 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 		}
 	}
 
-	private _computeScrollTopToRevealRange(viewport: Viewport, range: Range, verticalType: VerticalRevealType): number {
+	private _computeScrollTopToRevealRange(viewport: Viewport, range: Range, verticalType: viewEvents.VerticalRevealType): number {
 		let viewportStartY = viewport.top;
 		let viewportHeight = viewport.height;
 		let viewportEndY = viewportStartY + viewportHeight;
@@ -478,15 +492,15 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 		// Have a box that includes one extra line height (for the horizontal scrollbar)
 		boxStartY = this._context.viewLayout.getVerticalOffsetForLineNumber(range.startLineNumber);
 		boxEndY = this._context.viewLayout.getVerticalOffsetForLineNumber(range.endLineNumber) + this._lineHeight;
-		if (verticalType === VerticalRevealType.Simple || verticalType === VerticalRevealType.Bottom) {
+		if (verticalType === viewEvents.VerticalRevealType.Simple || verticalType === viewEvents.VerticalRevealType.Bottom) {
 			// Reveal one line more when the last line would be covered by the scrollbar - arrow down case or revealing a line explicitly at bottom
 			boxEndY += this._lineHeight;
 		}
 
 		let newScrollTop: number;
 
-		if (verticalType === VerticalRevealType.Center || verticalType === VerticalRevealType.CenterIfOutsideViewport) {
-			if (verticalType === VerticalRevealType.CenterIfOutsideViewport && viewportStartY <= boxStartY && boxEndY <= viewportEndY) {
+		if (verticalType === viewEvents.VerticalRevealType.Center || verticalType === viewEvents.VerticalRevealType.CenterIfOutsideViewport) {
+			if (verticalType === viewEvents.VerticalRevealType.CenterIfOutsideViewport && viewportStartY <= boxStartY && boxEndY <= viewportEndY) {
 				// Box is already in the viewport... do nothing
 				newScrollTop = viewportStartY;
 			} else {
@@ -495,7 +509,7 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 				newScrollTop = Math.max(0, boxMiddleY - viewportHeight / 2);
 			}
 		} else {
-			newScrollTop = this._computeMinimumScrolling(viewportStartY, viewportEndY, boxStartY, boxEndY, verticalType === VerticalRevealType.Top, verticalType === VerticalRevealType.Bottom);
+			newScrollTop = this._computeMinimumScrolling(viewportStartY, viewportEndY, boxStartY, boxEndY, verticalType === viewEvents.VerticalRevealType.Top, verticalType === viewEvents.VerticalRevealType.Bottom);
 		}
 
 		return newScrollTop;

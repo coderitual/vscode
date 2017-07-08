@@ -6,7 +6,6 @@
 
 import { onUnexpectedError } from 'vs/base/common/errors';
 import { IDisposable } from 'vs/base/common/lifecycle';
-import * as browser from 'vs/base/browser/browser';
 import * as dom from 'vs/base/browser/dom';
 import { FastDomNode, createFastDomNode } from 'vs/base/browser/fastDomNode';
 import { ICommandService } from 'vs/platform/commands/common/commands';
@@ -48,7 +47,9 @@ import { ViewportData } from 'vs/editor/common/viewLayout/viewLinesViewportData'
 import { EditorScrollbar } from 'vs/editor/browser/viewParts/editorScrollbar/editorScrollbar';
 import { Minimap } from 'vs/editor/browser/viewParts/minimap/minimap';
 import * as viewEvents from 'vs/editor/common/view/viewEvents';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { IThemeService, getThemeTypeSelector } from 'vs/platform/theme/common/themeService';
+import { Cursor } from 'vs/editor/common/controller/cursor';
+import { IMouseEvent } from 'vs/base/browser/mouseEvent';
 
 export interface IContentWidgetData {
 	widget: editorBrowser.IContentWidget;
@@ -66,6 +67,7 @@ export class View extends ViewEventHandler {
 
 	private _scrollbar: EditorScrollbar;
 	private _context: ViewContext;
+	private _cursor: Cursor;
 
 	// The view lines
 	private viewLines: ViewLines;
@@ -97,14 +99,16 @@ export class View extends ViewEventHandler {
 		configuration: Configuration,
 		themeService: IThemeService,
 		model: IViewModel,
+		cursor: Cursor,
 		execCoreEditorCommandFunc: ExecCoreEditorCommandFunc
 	) {
 		super();
 		this._isDisposed = false;
+		this._cursor = cursor;
 		this._renderAnimationFrame = null;
 		this.outgoingEvents = new ViewOutgoingEvents(model);
 
-		let viewController = new ViewController(model, execCoreEditorCommandFunc, this.outgoingEvents, commandService);
+		let viewController = new ViewController(configuration, model, execCoreEditorCommandFunc, this.outgoingEvents, commandService);
 
 		// The event dispatcher will always go through _renderOnce before dispatching any events
 		this.eventDispatcher = new ViewEventDispatcher((callback: () => void) => this._renderOnce(callback));
@@ -118,6 +122,7 @@ export class View extends ViewEventHandler {
 		this._register(themeService.onThemeChange(theme => {
 			this._context.theme = theme;
 			this.eventDispatcher.emit(new viewEvents.ViewThemeChangedEvent());
+			this.render(true, false);
 		}));
 
 		this.viewParts = [];
@@ -135,6 +140,10 @@ export class View extends ViewEventHandler {
 		this._register(model.addEventListener((events: viewEvents.ViewEvent[]) => {
 			this.eventDispatcher.emitMany(events);
 		}));
+
+		this._register(this._cursor.addEventListener((events: viewEvents.ViewEvent[]) => {
+			this.eventDispatcher.emitMany(events);
+		}));
 	}
 
 	private createViewParts(): void {
@@ -144,7 +153,7 @@ export class View extends ViewEventHandler {
 		this.linesContent.setPosition('absolute');
 
 		this.domNode = createFastDomNode(document.createElement('div'));
-		this.domNode.setClassName(this._context.configuration.editor.editorClassName);
+		this.domNode.setClassName(this.getEditorClassName());
 
 		this.overflowGuardContainer = createFastDomNode(document.createElement('div'));
 		PartFingerprints.write(this.overflowGuardContainer, PartFingerprint.OverflowGuard);
@@ -202,7 +211,7 @@ export class View extends ViewEventHandler {
 		let rulers = new Rulers(this._context);
 		this.viewParts.push(rulers);
 
-		let minimap = new Minimap(this._context, this._scrollbar);
+		let minimap = new Minimap(this._context);
 		this.viewParts.push(minimap);
 
 		// -------------- Wire dom nodes up
@@ -221,9 +230,9 @@ export class View extends ViewEventHandler {
 		this.overflowGuardContainer.appendChild(margin.getDomNode());
 		this.overflowGuardContainer.appendChild(this._scrollbar.getDomNode());
 		this.overflowGuardContainer.appendChild(scrollDecoration.getDomNode());
-		this.overflowGuardContainer.appendChild(this.overlayWidgets.getDomNode());
 		this.overflowGuardContainer.appendChild(this._textAreaHandler.textArea);
 		this.overflowGuardContainer.appendChild(this._textAreaHandler.textAreaCover);
+		this.overflowGuardContainer.appendChild(this.overlayWidgets.getDomNode());
 		this.overflowGuardContainer.appendChild(minimap.getDomNode());
 		this.domNode.appendChild(this.overflowGuardContainer);
 		this.domNode.appendChild(this.contentWidgets.overflowingContentWidgetsDomNode);
@@ -287,13 +296,6 @@ export class View extends ViewEventHandler {
 
 	private _setLayout(): void {
 		const layoutInfo = this._context.configuration.editor.layoutInfo;
-		if (browser.isChrome) {
-			/* tslint:disable:no-unused-variable */
-			// Access overflowGuardContainer.clientWidth to prevent relayouting bug in Chrome
-			// See Bug 19676: Editor misses a layout event
-			let clientWidth = this.overflowGuardContainer.domNode.clientWidth + 'px';
-			/* tslint:enable:no-unused-variable */
-		}
 		this.domNode.setWidth(layoutInfo.width);
 		this.domNode.setHeight(layoutInfo.height);
 
@@ -305,11 +307,15 @@ export class View extends ViewEventHandler {
 
 	}
 
+	private getEditorClassName() {
+		return this._context.configuration.editor.editorClassName + ' ' + getThemeTypeSelector(this._context.theme.type);
+	}
+
 	// --- begin event handlers
 
 	public onConfigurationChanged(e: viewEvents.ViewConfigurationChangedEvent): boolean {
 		if (e.editorClassName) {
-			this.domNode.setClassName(this._context.configuration.editor.editorClassName);
+			this.domNode.setClassName(this.getEditorClassName());
 		}
 		if (e.layoutInfo) {
 			this._setLayout();
@@ -327,6 +333,10 @@ export class View extends ViewEventHandler {
 	}
 	public onScrollChanged(e: viewEvents.ViewScrollChangedEvent): boolean {
 		this.outgoingEvents.emitScrollChanged(e);
+		return false;
+	}
+	public onThemeChanged(e: viewEvents.ViewThemeChangedEvent): boolean {
+		this.domNode.setClassName(this.getEditorClassName());
 		return false;
 	}
 
@@ -396,25 +406,25 @@ export class View extends ViewEventHandler {
 
 		if (!this.viewLines.shouldRender() && viewPartsToRender.length === 0) {
 			// Nothing to render
-			this._textAreaHandler.writeToTextArea();
 			return;
 		}
 
 		const partialViewportData = this._context.viewLayout.getLinesViewportData();
 		this._context.model.setViewport(partialViewportData.startLineNumber, partialViewportData.endLineNumber, partialViewportData.centeredLineNumber);
 
-		let viewportData = new ViewportData(partialViewportData, this._context.model);
+		let viewportData = new ViewportData(
+			this._cursor.getViewSelections(),
+			partialViewportData,
+			this._context.viewLayout.getWhitespaceViewportData(),
+			this._context.model
+		);
 
 		if (this.viewLines.shouldRender()) {
-			this.viewLines.renderText(viewportData, () => {
-				this._textAreaHandler.writeToTextArea();
-			});
+			this.viewLines.renderText(viewportData);
 			this.viewLines.onDidRender();
 
 			// Rendering of viewLines might cause scroll events to occur, so collect view parts to render again
 			viewPartsToRender = this._getViewPartsToRender();
-		} else {
-			this._textAreaHandler.writeToTextArea();
 		}
 
 		let renderingContext = new RenderingContext(this._context.viewLayout, viewportData, this.viewLines);
@@ -434,7 +444,7 @@ export class View extends ViewEventHandler {
 
 	// --- BEGIN CodeEditor helpers
 
-	public delegateVerticalScrollbarMouseDown(browserEvent: MouseEvent): void {
+	public delegateVerticalScrollbarMouseDown(browserEvent: IMouseEvent): void {
 		this._scrollbar.delegateVerticalScrollbarMouseDown(browserEvent);
 	}
 

@@ -21,7 +21,7 @@ import { IMode, LanguageIdentifier } from 'vs/editor/common/modes';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import * as platform from 'vs/base/common/platform';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { EDITOR_MODEL_DEFAULTS } from "vs/editor/common/config/editorOptions";
+import { EDITOR_MODEL_DEFAULTS } from 'vs/editor/common/config/editorOptions';
 import { PLAINTEXT_LANGUAGE_IDENTIFIER } from 'vs/editor/common/modes/modesRegistry';
 import { IRawTextSource, TextSource, RawTextSource } from 'vs/editor/common/model/textSource';
 import * as textModelEvents from 'vs/editor/common/model/textModelEvents';
@@ -157,6 +157,7 @@ class ModelMarkerHandler {
 			stickiness: editorCommon.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
 			className,
 			hoverMessage,
+			showIfCollapsed: true,
 			overviewRuler: {
 				color,
 				darkColor,
@@ -237,7 +238,7 @@ export class ModelServiceImpl implements IModelService {
 		}
 
 		let newDefaultEOL = DEFAULT_EOL;
-		const eol = config.files && config.files.eol;
+		const eol = config.files && config.files.eol; // TODO@Sandeep (https://github.com/Microsoft/vscode/issues/29119)
 		if (eol === '\r\n') {
 			newDefaultEOL = editorCommon.DefaultEndOfLine.CRLF;
 		} else if (eol === '\n') {
@@ -266,7 +267,7 @@ export class ModelServiceImpl implements IModelService {
 	public getCreationOptions(language: string): editorCommon.ITextModelCreationOptions {
 		let creationOptions = this._modelCreationOptionsByLanguage[language];
 		if (!creationOptions) {
-			creationOptions = ModelServiceImpl._readModelOptions(this._configurationService.getConfiguration({ overrideIdentifier: language }));
+			creationOptions = ModelServiceImpl._readModelOptions(this._configurationService.getConfiguration(null, { overrideIdentifier: language }));
 			this._modelCreationOptionsByLanguage[language] = creationOptions;
 		}
 		return creationOptions;

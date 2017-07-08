@@ -19,7 +19,7 @@ import { StandardTokenType } from 'vs/editor/common/modes';
 import { DEFAULT_WORD_REGEXP } from 'vs/editor/common/model/wordHelper';
 import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import { editorContribution } from 'vs/editor/browser/editorBrowserExtensions';
-import { IDecorationOptions, IModelDecorationOptions, IModelDeltaDecoration, TrackedRangeStickiness, Handler } from 'vs/editor/common/editorCommon';
+import { IDecorationOptions, IModelDecorationOptions, IModelDeltaDecoration, TrackedRangeStickiness } from 'vs/editor/common/editorCommon';
 import { ICodeEditorService } from 'vs/editor/common/services/codeEditorService';
 import { Range } from 'vs/editor/common/core/range';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -37,6 +37,8 @@ import { FloatingClickWidget } from 'vs/workbench/parts/preferences/browser/pref
 import { IListService } from 'vs/platform/list/browser/listService';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { Position } from 'vs/editor/common/core/position';
+import { CoreEditingCommands } from 'vs/editor/common/controller/coreCommands';
+import { first } from 'vs/base/common/arrays';
 
 const HOVER_DELAY = 300;
 const LAUNCH_JSON_REGEX = /launch\.json$/;
@@ -361,8 +363,13 @@ export class DebugEditorContribution implements IDebugEditorContribution {
 			return;
 		}
 
-		// First call stack frame is the frame where exception has been thrown
-		const exceptionSf = callStack[0];
+		// First call stack frame that is available is the frame where exception has been thrown
+		const exceptionSf = first(callStack, sf => sf.source && sf.source.available, undefined);
+		if (!exceptionSf) {
+			this.closeExceptionWidget();
+			return;
+		}
+
 		const sameUri = exceptionSf.source.uri.toString() === model.uri.toString();
 		if (this.exceptionWidget && !sameUri) {
 			this.closeExceptionWidget();
@@ -434,7 +441,7 @@ export class DebugEditorContribution implements IDebugEditorContribution {
 			// Check if there are more characters on a line after a "configurations": [, if yes enter a newline
 			if (this.editor.getModel().getLineLastNonWhitespaceColumn(position.lineNumber) > position.column) {
 				this.editor.setPosition(position);
-				this.editor.trigger(this.getId(), Handler.LineBreakInsert, undefined);
+				CoreEditingCommands.LineBreakInsert.runEditorCommand(null, this.editor, null);
 			}
 			// Check if there is already an empty line to insert suggest, if yes just place the cursor
 			if (this.editor.getModel().getLineLastNonWhitespaceColumn(position.lineNumber + 1) === 0) {

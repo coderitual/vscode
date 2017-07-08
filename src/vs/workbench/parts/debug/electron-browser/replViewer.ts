@@ -17,7 +17,7 @@ import { IExpressionContainer, IExpression } from 'vs/workbench/parts/debug/comm
 import { Model, OutputNameValueElement, Expression, OutputElement, Variable } from 'vs/workbench/parts/debug/common/debugModel';
 import { renderVariable, renderExpressionValue, IVariableTemplateData, BaseDebugController } from 'vs/workbench/parts/debug/electron-browser/debugViewer';
 import { ClearReplAction } from 'vs/workbench/parts/debug/browser/debugActions';
-import { CopyAction } from 'vs/workbench/parts/debug/electron-browser/electronDebugActions';
+import { CopyAction, CopyAllAction } from 'vs/workbench/parts/debug/electron-browser/electronDebugActions';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { LinkDetector } from 'vs/workbench/parts/debug/browser/linkDetector';
@@ -62,7 +62,6 @@ interface IExpressionTemplateData {
 
 interface IValueOutputTemplateData {
 	container: HTMLElement;
-	counter: HTMLElement;
 	value: HTMLElement;
 }
 
@@ -178,7 +177,6 @@ export class ReplExpressionsRenderer implements IRenderer {
 			let expression = dom.append(container, $('.output.expression'));
 
 			data.container = container;
-			data.counter = dom.append(expression, $('div.counter'));
 			data.value = dom.append(expression, $('span.value'));
 
 			return data;
@@ -223,15 +221,6 @@ export class ReplExpressionsRenderer implements IRenderer {
 	}
 
 	private renderOutputValue(output: OutputElement, templateData: IValueOutputTemplateData): void {
-
-		// counter
-		if (output.counter > 1) {
-			templateData.counter.textContent = String(output.counter);
-			templateData.counter.className = (output.severity === severity.Warning) ? 'counter warn' : (output.severity === severity.Error) ? 'counter error' : 'counter info';
-		} else {
-			templateData.counter.textContent = '';
-			templateData.counter.className = 'counter';
-		}
 
 		// value
 		dom.clearNode(templateData.value);
@@ -408,6 +397,7 @@ export class ReplExpressionsActionProvider implements IActionProvider {
 	public getSecondaryActions(tree: ITree, element: any): TPromise<IAction[]> {
 		const actions: IAction[] = [];
 		actions.push(new CopyAction(CopyAction.ID, CopyAction.LABEL));
+		actions.push(new CopyAllAction(CopyAllAction.ID, CopyAllAction.LABEL, tree));
 		actions.push(this.instantiationService.createInstance(ClearReplAction, ClearReplAction.ID, ClearReplAction.LABEL));
 
 		return TPromise.as(actions);

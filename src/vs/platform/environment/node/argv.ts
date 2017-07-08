@@ -22,7 +22,6 @@ const options: minimist.Opts = {
 		'debugBrkPluginHost',
 		'debugPluginHost',
 		'open-url',
-		'prof-startup-timers',
 		'enable-proposed-api'
 	],
 	boolean: [
@@ -106,16 +105,7 @@ export function parseCLIProcessArgv(processArgv: string[]): ParsedArgs {
  * Use this to parse code arguments such as `--verbose --wait`
  */
 export function parseArgs(args: string[]): ParsedArgs {
-	const result = minimist(args, options) as ParsedArgs;
-
-	// Because Spectron doesn't allow us to pass a custom user-data-dir,
-	// Code receives two of them. Let's just take the first one.
-	const userDataDir: string | string[] = result['user-data-dir'];
-	if (userDataDir) {
-		result['user-data-dir'] = typeof userDataDir === 'string' ? userDataDir : userDataDir[0];
-	}
-
-	return result;
+	return minimist(args, options) as ParsedArgs;
 }
 
 export const optionsHelp: { [name: string]: string; } = {
@@ -157,7 +147,7 @@ export function formatOptions(options: { [name: string]: string; }, columns: num
 			result += '\n';
 		}
 		result += '  ' + k + keyPadding + wrappedDescription[0];
-		for (var i = 1; i < wrappedDescription.length; i++) {
+		for (let i = 1; i < wrappedDescription.length; i++) {
 			result += '\n' + (<any>' ').repeat(argLength) + wrappedDescription[i];
 		}
 	});

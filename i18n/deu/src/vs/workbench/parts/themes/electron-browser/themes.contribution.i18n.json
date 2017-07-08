@@ -6,7 +6,7 @@
 {
 	"selectTheme.label": "Farbdesign",
 	"installColorThemes": "Zusätzliche Farbschemas installieren...",
-	"themes.selectTheme": "Farbdesign auswählen",
+	"themes.selectTheme": "Farbdesign auswählen (eine Vorschau wird mit den Tasten NACH OBEN/NACH UNTEN angezeigt)",
 	"selectIconTheme.label": "Dateisymboldesign",
 	"installIconThemes": "Zusätzliche Dateisymbolschemas installieren...",
 	"noIconThemeLabel": "Keine",

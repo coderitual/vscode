@@ -5,6 +5,8 @@
 
 'use strict';
 
+import * as nls from 'vscode-nls';
+const localize = nls.config(process.env.VSCODE_NLS_CONFIG)();
 import * as vscode from 'vscode';
 import * as path from 'path';
 import TelemetryReporter from 'vscode-extension-telemetry';
@@ -59,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
 				continue;
 			}
 
-			let styles = contributes['markdown.preview'] && contributes['markdown.preview'].styles;
+			let styles = contributes['markdown.previewStyles'];
 			if (styles) {
 				if (!Array.isArray(styles)) {
 					styles = [styles];
@@ -73,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			}
 
-			let scripts = contributes['markdown.preview'] && contributes['markdown.preview'].scripts;
+			let scripts = contributes['markdown.previewScripts'];
 			if (scripts) {
 				if (!Array.isArray(scripts)) {
 					scripts = [scripts];
@@ -166,6 +168,10 @@ export function activate(context: vscode.ExtensionContext) {
 		previewSecuritySelector.showSecutitySelectorForWorkspace(resource ? vscode.Uri.parse(resource).query : undefined);
 	}));
 
+	context.subscriptions.push(vscode.commands.registerCommand('_markdown.onPreviewStyleLoadError', (resources: string[]) => {
+		vscode.window.showWarningMessage(localize('onPreviewStyleLoadError', "Could not load 'markdown.styles': {0}", resources.join(', ')));
+	}));
+
 	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(document => {
 		if (isMarkdownFile(document)) {
 			const uri = getMarkdownUri(document.uri);
@@ -221,7 +227,8 @@ function showPreview(uri?: vscode.Uri, sideBySide: boolean = false) {
 	const thenable = vscode.commands.executeCommand('vscode.previewHtml',
 		getMarkdownUri(resource),
 		getViewColumn(sideBySide),
-		`Preview '${path.basename(resource.fsPath)}'`);
+		`Preview '${path.basename(resource.fsPath)}'`,
+		{ allowScripts: true, allowSvgs: true });
 
 	if (telemetryReporter) {
 		telemetryReporter.sendTelemetryEvent('openPreview', {

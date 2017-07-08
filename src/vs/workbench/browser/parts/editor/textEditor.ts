@@ -7,6 +7,7 @@
 
 import nls = require('vs/nls');
 import { TPromise } from 'vs/base/common/winjs.base';
+import URI from 'vs/base/common/uri';
 import { Dimension, Builder } from 'vs/base/browser/builder';
 import objects = require('vs/base/common/objects');
 import types = require('vs/base/common/types');
@@ -18,14 +19,14 @@ import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
 import { IEditorViewState, IEditor, isCommonCodeEditor, isCommonDiffEditor } from 'vs/editor/common/editorCommon';
 import { Position } from 'vs/platform/editor/common/editor';
 import { IStorageService } from 'vs/platform/storage/common/storage';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { Scope } from 'vs/workbench/common/memento';
 import { getCodeEditor } from 'vs/editor/common/services/codeEditorService';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { ITextFileService, SaveReason, AutoSaveMode } from 'vs/workbench/services/textfile/common/textfiles';
+import { ITextResourceConfigurationService } from 'vs/editor/common/services/resourceConfiguration';
 import { IEditorGroupService } from 'vs/workbench/services/group/common/groupService';
 import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 
@@ -38,8 +39,8 @@ interface ITextEditorViewState {
 }
 
 export interface IEditorConfiguration {
-	editor: any;
-	diffEditor: any;
+	editor: object;
+	diffEditor: object;
 }
 
 /**
@@ -57,23 +58,22 @@ export abstract class BaseTextEditor extends BaseEditor {
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@IStorageService private storageService: IStorageService,
-		@IConfigurationService private _configurationService: IConfigurationService,
-		@IWorkbenchThemeService protected themeService: IWorkbenchThemeService,
+		@ITextResourceConfigurationService private _configurationService: ITextResourceConfigurationService,
+		@IThemeService protected themeService: IThemeService,
 		@IModeService private modeService: IModeService,
 		@ITextFileService private textFileService: ITextFileService,
 		@IEditorGroupService protected editorGroupService: IEditorGroupService
 	) {
 		super(id, telemetryService, themeService);
 
-		this.toUnbind.push(this.configurationService.onDidUpdateConfiguration(e => this.handleConfigurationChangeEvent(e.config)));
-		this.toUnbind.push(themeService.onDidColorThemeChange(e => this.handleConfigurationChangeEvent())); // TODO@theme this should be done from the editor itself and not from the outside
+		this.toUnbind.push(this.configurationService.onDidUpdateConfiguration(e => this.handleConfigurationChangeEvent(this.configurationService.getConfiguration<IEditorConfiguration>(this.getResource()))));
 	}
 
 	protected get instantiationService(): IInstantiationService {
 		return this._instantiationService;
 	}
 
-	protected get configurationService(): IConfigurationService {
+	protected get configurationService(): ITextResourceConfigurationService {
 		return this._configurationService;
 	}
 
@@ -117,15 +117,9 @@ export abstract class BaseTextEditor extends BaseEditor {
 
 	protected getConfigurationOverrides(): IEditorOptions {
 		const overrides = {};
-		const language = this.getLanguage();
-		if (language) {
-			objects.assign(overrides, this.configurationService.getConfiguration<IEditorConfiguration>({ overrideIdentifier: language, section: 'editor' }));
-		}
-
 		objects.assign(overrides, {
 			overviewRulerLanes: 3,
 			lineNumbersMinChars: 3,
-			theme: this.themeService.getColorTheme().id,
 			fixedOverflowWidgets: true
 		});
 
@@ -136,7 +130,7 @@ export abstract class BaseTextEditor extends BaseEditor {
 
 		// Editor for Text
 		this._editorContainer = parent;
-		this.editorControl = this.createEditorControl(parent, this.computeConfiguration(this.configurationService.getConfiguration<IEditorConfiguration>()));
+		this.editorControl = this.createEditorControl(parent, this.computeConfiguration(this.configurationService.getConfiguration<IEditorConfiguration>(this.getResource())));
 
 		// Model & Language changes
 		const codeEditor = getCodeEditor(this);
@@ -288,7 +282,7 @@ export abstract class BaseTextEditor extends BaseEditor {
 		return null;
 	}
 
-	private updateEditorConfiguration(configuration = this.configurationService.getConfiguration<IEditorConfiguration>()): void {
+	private updateEditorConfiguration(configuration = this.configurationService.getConfiguration<IEditorConfiguration>(this.getResource())): void {
 		if (!this.editorControl) {
 			return;
 		}
@@ -309,20 +303,17 @@ export abstract class BaseTextEditor extends BaseEditor {
 		}
 	}
 
-	protected getLanguage(): string {
+	protected getResource(): URI {
 		const codeEditor = getCodeEditor(this);
 		if (codeEditor) {
 			const model = codeEditor.getModel();
 			if (model) {
-				return model.getLanguageIdentifier().language;
+				return model.uri;
 			}
 		}
 
 		if (this.input) {
-			const resource = toResource(this.input);
-			if (resource) {
-				return this.modeService.getModeIdByFilenameOrFirstLine(resource.fsPath);
-			}
+			return toResource(this.input);
 		}
 
 		return null;
