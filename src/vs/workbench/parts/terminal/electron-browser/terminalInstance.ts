@@ -161,7 +161,11 @@ export class TerminalInstance implements ITerminalInstance {
 		this._createXterm();
 
 		if (platform.isWindows) {
-			this._processReady.then(() => this._windowsShellHelper = new WindowsShellHelper(this._processId, this._shellLaunchConfig.executable, this, this._xterm));
+			this._processReady.then(() => {
+				if (!this._isDisposed) {
+					this._windowsShellHelper = new WindowsShellHelper(this._processId, this._shellLaunchConfig.executable, this, this._xterm);
+				}
+			});
 		}
 
 		// Only attach xterm.js to the DOM if the terminal panel has been opened before.
@@ -410,6 +414,9 @@ export class TerminalInstance implements ITerminalInstance {
 	}
 
 	public dispose(): void {
+		if (this._windowsShellHelper) {
+			this._windowsShellHelper.dispose();
+		}
 		if (this._linkHandler) {
 			this._linkHandler.dispose();
 		}
@@ -883,6 +890,9 @@ export class TerminalInstance implements ITerminalInstance {
 	}
 
 	public setTitle(title: string, eventFromProcess: boolean): void {
+		if (!title) {
+			return;
+		}
 		if (eventFromProcess) {
 			title = path.basename(title);
 			if (platform.isWindows) {

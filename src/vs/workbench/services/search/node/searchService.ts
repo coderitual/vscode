@@ -59,8 +59,6 @@ export class SearchService implements ISearchService {
 	}
 
 	public search(query: ISearchQuery): PPromise<ISearchComplete, ISearchProgressItem> {
-		this.extendQuery(query);
-
 		let rawSearchQuery: PPromise<void, ISearchProgressItem>;
 		return new PPromise<ISearchComplete, ISearchProgressItem>((onComplete, onError, onProgress) => {
 
@@ -191,8 +189,8 @@ export class DiskSearch {
 				args: ['--type=searchService'],
 				// See https://github.com/Microsoft/vscode/issues/27665
 				// Pass in fresh execArgv to the forked process such that it doesn't inherit them from `process.execArgv`.
-				// e.g. Launching the extension host process with `--debug-brk=xxx` and then forking a process from the extension host
-				// results in the forked process inheriting `--debug-brk=xxx`.
+				// e.g. Launching the extension host process with `--inspect-brk=xxx` and then forking a process from the extension host
+				// results in the forked process inheriting `--inspect-brk=xxx`.
 				freshExecArgv: true,
 				env: {
 					AMD_ENTRYPOINT: 'vs/workbench/services/search/node/searchApp',

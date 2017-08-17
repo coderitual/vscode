@@ -835,7 +835,7 @@ declare module monaco.editor {
 
 	/**
 	 * Get markers for owner ant/or resource
-	 * @returns {IMarkerData[]} list of markers
+	 * @returns {IMarker[]} list of markers
 	 * @param filter
 	 */
 	export function getModelMarkers(filter: {
@@ -1559,7 +1559,7 @@ declare module monaco.editor {
 		 */
 		getFullModelRange(): Range;
 		/**
-		 * Returns iff the model was disposed or not.
+		 * Returns if the model was disposed or not.
 		 */
 		isDisposed(): boolean;
 		/**

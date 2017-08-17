@@ -5,6 +5,7 @@
 
 import * as cp from 'child_process';
 import * as platform from 'vs/base/common/platform';
+import * as pfs from 'vs/base/node/pfs';
 import * as path from 'path';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Emitter, debounceEvent } from 'vs/base/common/event';
@@ -16,6 +17,8 @@ const SHELL_EXECUTABLES = ['cmd.exe', 'powershell.exe', 'bash.exe'];
 export class WindowsShellHelper {
 	private _childProcessIdStack: number[];
 	private _onCheckShell: Emitter<TPromise<string>>;
+	private _wmicProcess: cp.ChildProcess;
+	private _isDisposed: boolean;
 
 	public constructor(
 		private _rootProcessId: number,
@@ -28,7 +31,7 @@ export class WindowsShellHelper {
 		}
 
 		this._childProcessIdStack = [this._rootProcessId];
-
+		this._isDisposed = false;
 		this._onCheckShell = new Emitter<TPromise<string>>();
 		// The debounce is necessary to prevent multiple processes from spawning when
 		// the enter key or output is spammed
@@ -42,25 +45,37 @@ export class WindowsShellHelper {
 
 	private checkShell(): void {
 		if (platform.isWindows && this._terminalInstance.isTitleSetByProcess) {
-			this.getShellName().then(title => this._terminalInstance.setTitle(title, true));
+			this.getShellName().then(title => {
+				if (!this._isDisposed) {
+					this._terminalInstance.setTitle(title, true);
+				}
+			});
 		}
 	}
 
 	private getChildProcessDetails(pid: number): TPromise<{ executable: string, pid: number }[]> {
 		return new TPromise((resolve, reject) => {
-			cp.execFile('wmic.exe', ['process', 'where', `parentProcessId=${pid}`, 'get', 'ExecutablePath,ProcessId'], (err, stdout, stderr) => {
-				if (err) {
-					reject(err);
-				} else if (stderr.length > 0) {
-					resolve([]); // No processes found
-				} else {
-					const childProcessLines = stdout.split('\n').slice(1).filter(str => !/^\s*$/.test(str));
-					const childProcessDetails = childProcessLines.map(str => {
-						const s = str.split('  ');
-						return { executable: s[0], pid: Number(s[1]) };
-					});
-					resolve(childProcessDetails);
-				}
+			const is32ProcessOn64Windows = process.env.hasOwnProperty('PROCESSOR_ARCHITEW6432');
+			const wmicPath = `${process.env.windir}\\${is32ProcessOn64Windows ? 'Sysnative' : 'System32'}\\wbem\\wmic.exe`;
+			pfs.fileExists(wmicPath).then(() => {
+				this._wmicProcess = cp.execFile(wmicPath, ['process', 'where', `parentProcessId=${pid}`, 'get', 'ExecutablePath,ProcessId'], (err, stdout, stderr) => {
+					this._wmicProcess = null;
+					if (this._isDisposed) {
+						reject(null);
+					}
+					if (err) {
+						reject(err);
+					} else if (stderr.length > 0) {
+						resolve([]); // No processes found
+					} else {
+						const childProcessLines = stdout.split('\n').slice(1).filter(str => !/^\s*$/.test(str));
+						const childProcessDetails = childProcessLines.map(str => {
+							const s = str.split('  ');
+							return { executable: s[0], pid: Number(s[1]) };
+						});
+						resolve(childProcessDetails);
+					}
+				});
 			});
 		});
 	}
@@ -89,7 +104,18 @@ export class WindowsShellHelper {
 			// Save the pid in the stack and keep looking for children of that child
 			this._childProcessIdStack.push(result[0].pid);
 			return this.refreshShellProcessTree(result[0].pid, result[0].executable);
-		}, error => { return error; });
+		}, error => {
+			if (!this._isDisposed) {
+				return error;
+			}
+		});
+	}
+
+	public dispose(): void {
+		this._isDisposed = true;
+		if (this._wmicProcess) {
+			this._wmicProcess.kill();
+		}
 	}
 
 	/**

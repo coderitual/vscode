@@ -31,7 +31,7 @@ import { createServer, Server } from 'net';
 import Event, { Emitter, debounceEvent, mapEvent, any } from 'vs/base/common/event';
 import { fromEventEmitter } from 'vs/base/node/event';
 import { IInitData, IWorkspaceData } from 'vs/workbench/api/node/extHost.protocol';
-import { MainProcessExtensionService } from 'vs/workbench/api/electron-browser/mainThreadExtensionService';
+import { ExtensionService } from "vs/workbench/services/extensions/electron-browser/extensionService";
 import { IWorkspaceConfigurationService } from 'vs/workbench/services/configuration/common/configuration';
 import { ICrashReporterService } from 'vs/workbench/services/crashReporter/common/crashReporterService';
 import { IBroadcastService, IBroadcast } from "vs/platform/broadcast/electron-browser/broadcastService";
@@ -74,9 +74,9 @@ export class ExtensionHostProcessWorker {
 	private isExtensionDevelopmentDebug: boolean;
 	private isExtensionDevelopmentDebugBrk: boolean;
 
-	public readonly messagingProtocol = new LazyMessagePassingProtol();
+	readonly messagingProtocol = new LazyMessagePassingProtol();
 
-	private extensionService: MainProcessExtensionService;
+	private extensionService: ExtensionService;
 
 	constructor(
 		@IWorkspaceContextService private contextService: IWorkspaceContextService,
@@ -122,10 +122,10 @@ export class ExtensionHostProcessWorker {
 		}
 	}
 
-	public start(extensionService: MainProcessExtensionService): void {
+	public start(extensionService: ExtensionService): TPromise<IMessagePassingProtocol> {
 		this.extensionService = extensionService;
 
-		TPromise.join<any>([this.tryListenOnPipe(), this.tryFindDebugPort()]).then(data => {
+		return TPromise.join<any>([this.tryListenOnPipe(), this.tryFindDebugPort()]).then(data => {
 			const [server, hook] = <[Server, string]>data[0];
 			const port = <number>data[1];
 
@@ -144,7 +144,7 @@ export class ExtensionHostProcessWorker {
 				// (i.e. extension host) is taken down in a brutal fashion by the OS
 				detached: !!isWindows,
 				execArgv: port
-					? ['--nolazy', (this.isExtensionDevelopmentDebugBrk ? '--debug-brk=' : '--debug=') + port]
+					? ['--nolazy', (this.isExtensionDevelopmentDebugBrk ? '--inspect-brk=' : '--inspect=') + port]
 					: undefined,
 				silent: true
 			};
@@ -219,10 +219,10 @@ export class ExtensionHostProcessWorker {
 			}
 
 			// Initialize extension host process with hand shakes
-			return this.tryExtHostHandshake(server).then(() => clearTimeout(startupTimeoutHandle));
-		}).done(undefined, err => {
-			console.error('ERROR starting extension host');
-			console.error(err);
+			return this.tryExtHostHandshake(server).then((protocol) => {
+				clearTimeout(startupTimeoutHandle);
+				return protocol;
+			});
 		});
 	}
 
@@ -262,7 +262,7 @@ export class ExtensionHostProcessWorker {
 		});
 	}
 
-	private tryExtHostHandshake(server: Server): TPromise<any> {
+	private tryExtHostHandshake(server: Server): TPromise<IMessagePassingProtocol> {
 
 		return new TPromise<IMessagePassingProtocol>((resolve, reject) => {
 			let handle = setTimeout(() => reject('timeout'), 60 * 1000);
@@ -276,24 +276,28 @@ export class ExtensionHostProcessWorker {
 
 		}).then(protocol => {
 
-			protocol.onMessage(msg => {
-				if (msg === 'ready') {
-					// 1) Host is ready to receive messages, initialize it
-					return this.createExtHostInitData().then(data => protocol.send(stringify(data)));
-				} else if (msg === 'initialized') {
-					// 2) Host is initialized
-					this.messagingProtocol.resolve(protocol);
-				}
-				return undefined;
+			return new TPromise<IMessagePassingProtocol>((resolve, reject) => {
+				protocol.onMessage(msg => {
+					if (msg === 'ready') {
+						// 1) Host is ready to receive messages, initialize it
+						return this.createExtHostInitData().then(data => protocol.send(stringify(data)));
+					} else if (msg === 'initialized') {
+						// 2) Host is initialized
+						this.messagingProtocol.resolve(protocol);
+						resolve(protocol);
+					}
+					return undefined;
+				});
 			});
 		});
 	}
 
 	private createExtHostInitData(): TPromise<IInitData> {
 		return TPromise.join<any>([this.telemetryService.getTelemetryInfo(), this.extensionService.getExtensions()]).then(([telemetryInfo, extensionDescriptions]) => {
-			return <IInitData>{
+			let r: IInitData = {
 				parentPid: process.pid,
 				environment: {
+					isExtensionDevelopmentDebug: this.isExtensionDevelopmentDebug,
 					appSettingsHome: this.environmentService.appSettingsHome,
 					disableExtensions: this.environmentService.disableExtensions,
 					userExtensionsHome: this.environmentService.extensionsPath,
@@ -308,6 +312,7 @@ export class ExtensionHostProcessWorker {
 				configuration: this.configurationService.getConfigurationData(),
 				telemetryInfo
 			};
+			return r;
 		});
 	}
 
@@ -375,8 +380,12 @@ export class ExtensionHostProcessWorker {
 					return false;
 				});
 
+				let message = nls.localize('extensionHostProcess.crash', "Extension host terminated unexpectedly. Please reload the window to recover.");
+				if (code === 87) {
+					message = nls.localize('extensionHostProcess.unresponsiveCrash', "Extension host terminated because it was not responsive. Please reload the window to recover.");
+				}
 				this.messageService.show(Severity.Error, {
-					message: nls.localize('extensionHostProcess.crash', "Extension host terminated unexpectedly. Please reload the window to recover."),
+					message: message,
 					actions: [
 						openDevTools,
 						this.instantiationService.createInstance(ReloadWindowAction, ReloadWindowAction.ID, ReloadWindowAction.LABEL)
