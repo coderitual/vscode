@@ -36,6 +36,7 @@ const eolFilter = [
 	'!ThirdPartyNotices.txt',
 	'!LICENSE.txt',
 	'!extensions/**/out/**',
+	'!test/smoke/out/**',
 	'!**/node_modules/**',
 	'!**/fixtures/**',
 	'!**/*.{svg,exe,png,bmp,scpt,bat,cmd,cur,ttf,woff,eot}',
@@ -53,6 +54,7 @@ const indentationFilter = [
 	'!**/*.md',
 	'!**/*.ps1',
 	'!**/*.template',
+	'!**/*.yaml',
 	'!**/*.yml',
 	'!**/lib/**',
 	'!extensions/**/*.d.ts',
@@ -92,6 +94,7 @@ const copyrightFilter = [
 	'!**/*.opts',
 	'!**/*.disabled',
 	'!build/**/*.init',
+	'!resources/linux/snap/snapcraft.yaml',
 	'!resources/win32/bin/code.js',
 	'!extensions/markdown/media/tomorrow.css',
 	'!extensions/html/server/src/modes/typescript/*'

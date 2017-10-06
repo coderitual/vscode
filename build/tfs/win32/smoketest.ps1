@@ -38,10 +38,10 @@ step "Build minified" {
 }
 
 step "Run smoke test" {
-	exec { & Push-Location test\smoke }
-	exec { & npm install }
-	exec { & npm test -- --latest "$env:AGENT_BUILDDIRECTORY\VSCode-win32-$global:arch\Code - Insiders.exe" }
-	exec { & Pop-Location }
+	$Screenshots = "$env:AGENT_BUILDDIRECTORY\smoketest-screenshots"
+	Remove-Item -Recurse -Force -ErrorAction Ignore $Screenshots
+
+	exec { & npm run smoketest -- --build "$env:AGENT_BUILDDIRECTORY\VSCode-win32-$global:arch" --screenshots "$Screenshots" }
 }
 
 done

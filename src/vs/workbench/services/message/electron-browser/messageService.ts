@@ -13,8 +13,8 @@ import { IConfirmation, Severity, IChoiceService } from 'vs/platform/message/com
 import { isLinux } from 'vs/base/common/platform';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { Action } from 'vs/base/common/actions';
-import { IWindowService } from "vs/platform/windows/common/windows";
-import { mnemonicLabel } from "vs/base/common/labels";
+import { IWindowService } from 'vs/platform/windows/common/windows';
+import { mnemonicButtonLabel } from 'vs/base/common/labels';
 
 export class MessageService extends WorkbenchMessageService implements IChoiceService {
 
@@ -41,7 +41,7 @@ export class MessageService extends WorkbenchMessageService implements IChoiceSe
 			buttons.push(nls.localize('cancelButton', "Cancel"));
 		}
 
-		let opts: Electron.ShowMessageBoxOptions = {
+		let opts: Electron.MessageBoxOptions = {
 			title: confirmation.title,
 			message: confirmation.message,
 			buttons,
@@ -84,8 +84,8 @@ export class MessageService extends WorkbenchMessageService implements IChoiceSe
 		return promise;
 	}
 
-	private showMessageBox(opts: Electron.ShowMessageBoxOptions): number {
-		opts.buttons = opts.buttons.map(button => mnemonicLabel(button));
+	private showMessageBox(opts: Electron.MessageBoxOptions): number {
+		opts.buttons = opts.buttons.map(button => mnemonicButtonLabel(button));
 		opts.buttons = isLinux ? opts.buttons.reverse() : opts.buttons;
 
 		if (opts.defaultId !== void 0) {

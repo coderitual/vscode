@@ -9,7 +9,7 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import { mixin } from 'vs/base/common/objects';
 import * as vscode from 'vscode';
 import * as TypeConverters from 'vs/workbench/api/node/extHostTypeConverters';
-import { Range, Disposable, CompletionList, CompletionItem, SnippetString } from 'vs/workbench/api/node/extHostTypes';
+import { Range, Disposable, CompletionList, SnippetString } from 'vs/workbench/api/node/extHostTypes';
 import { ISingleEditOperation } from 'vs/editor/common/editorCommon';
 import * as modes from 'vs/editor/common/modes';
 import { ExtHostHeapService } from 'vs/workbench/api/node/extHostHeapService';
@@ -18,10 +18,11 @@ import { ExtHostCommands, CommandsConverter } from 'vs/workbench/api/node/extHos
 import { ExtHostDiagnostics } from 'vs/workbench/api/node/extHostDiagnostics';
 import { IWorkspaceSymbolProvider } from 'vs/workbench/parts/search/common/search';
 import { asWinJsPromise } from 'vs/base/common/async';
-import { MainContext, MainThreadLanguageFeaturesShape, ExtHostLanguageFeaturesShape, ObjectIdentifier, IRawColorInfo, IRawColorFormatMap, IMainContext } from './extHost.protocol';
+import { MainContext, MainThreadTelemetryShape, MainThreadLanguageFeaturesShape, ExtHostLanguageFeaturesShape, ObjectIdentifier, IRawColorInfo, IMainContext, IExtHostSuggestResult, IExtHostSuggestion } from './extHost.protocol';
 import { regExpLeadsToEndlessLoop } from 'vs/base/common/strings';
 import { IPosition } from 'vs/editor/common/core/position';
 import { IRange } from 'vs/editor/common/core/range';
+import { isFalsyOrEmpty } from 'vs/base/common/arrays';
 
 // --- adapter
 
@@ -173,12 +174,11 @@ class TypeDefinitionAdapter {
 
 class HoverAdapter {
 
-	private _documents: ExtHostDocuments;
-	private _provider: vscode.HoverProvider;
-
-	constructor(documents: ExtHostDocuments, provider: vscode.HoverProvider) {
-		this._documents = documents;
-		this._provider = provider;
+	constructor(
+		private readonly _documents: ExtHostDocuments,
+		private readonly _provider: vscode.HoverProvider,
+	) {
+		//
 	}
 
 	public provideHover(resource: URI, position: IPosition): TPromise<modes.Hover> {
@@ -187,7 +187,7 @@ class HoverAdapter {
 		let pos = TypeConverters.toPosition(position);
 
 		return asWinJsPromise(token => this._provider.provideHover(doc, pos, token)).then(value => {
-			if (!value) {
+			if (!value || isFalsyOrEmpty(value.contents)) {
 				return undefined;
 			}
 			if (!value.range) {
@@ -263,7 +263,7 @@ class QuickFixAdapter {
 	private _diagnostics: ExtHostDiagnostics;
 	private _provider: vscode.CodeActionProvider;
 
-	constructor(documents: ExtHostDocuments, commands: CommandsConverter, diagnostics: ExtHostDiagnostics, heapService: ExtHostHeapService, provider: vscode.CodeActionProvider) {
+	constructor(documents: ExtHostDocuments, commands: CommandsConverter, diagnostics: ExtHostDiagnostics, provider: vscode.CodeActionProvider) {
 		this._documents = documents;
 		this._commands = commands;
 		this._diagnostics = diagnostics;
@@ -273,13 +273,13 @@ class QuickFixAdapter {
 	provideCodeActions(resource: URI, range: IRange): TPromise<modes.Command[]> {
 
 		const doc = this._documents.getDocumentData(resource).document;
-		const ran = TypeConverters.toRange(range);
+		const ran = <vscode.Range>TypeConverters.toRange(range);
 		const allDiagnostics: vscode.Diagnostic[] = [];
 
 		this._diagnostics.forEach(collection => {
 			if (collection.has(resource)) {
 				for (let diagnostic of collection.get(resource)) {
-					if (diagnostic.range.intersection(ran)) {
+					if (ran.contains(diagnostic.range)) {
 						allDiagnostics.push(diagnostic);
 					}
 				}
@@ -459,26 +459,36 @@ class RenameAdapter {
 
 class SuggestAdapter {
 
+	static supportsResolving(provider: vscode.CompletionItemProvider): boolean {
+		return typeof provider.resolveCompletionItem === 'function';
+	}
+
 	private _documents: ExtHostDocuments;
 	private _commands: CommandsConverter;
-	private _heapService: ExtHostHeapService;
 	private _provider: vscode.CompletionItemProvider;
 
-	constructor(documents: ExtHostDocuments, commands: CommandsConverter, heapService: ExtHostHeapService, provider: vscode.CompletionItemProvider) {
+	private _cache = new Map<number, vscode.CompletionItem[]>();
+	private _idPool = 0;
+
+	constructor(documents: ExtHostDocuments, commands: CommandsConverter, provider: vscode.CompletionItemProvider) {
 		this._documents = documents;
 		this._commands = commands;
-		this._heapService = heapService;
 		this._provider = provider;
 	}
 
-	provideCompletionItems(resource: URI, position: IPosition): TPromise<modes.ISuggestResult> {
+	provideCompletionItems(resource: URI, position: IPosition, context: modes.SuggestContext): TPromise<IExtHostSuggestResult> {
 
 		const doc = this._documents.getDocumentData(resource).document;
 		const pos = TypeConverters.toPosition(position);
 
-		return asWinJsPromise<vscode.CompletionItem[] | vscode.CompletionList>(token => this._provider.provideCompletionItems(doc, pos, token)).then(value => {
+		return asWinJsPromise<vscode.CompletionItem[] | vscode.CompletionList>(token => {
+			return this._provider.provideCompletionItems(doc, pos, token, TypeConverters.CompletionContext.from(context));
+		}).then(value => {
 
-			const result: modes.ISuggestResult = {
+			const _id = this._idPool++;
+
+			const result: IExtHostSuggestResult = {
+				_id,
 				suggestions: [],
 			};
 
@@ -499,19 +509,15 @@ class SuggestAdapter {
 			const wordRangeBeforePos = (doc.getWordRangeAtPosition(pos) || new Range(pos, pos))
 				.with({ end: pos });
 
-			for (const item of list.items) {
-
-				const suggestion = this._convertCompletionItem(item, pos, wordRangeBeforePos);
-
-				// bad completion item
-				if (!suggestion) {
-					// converter did warn
-					continue;
+			for (let i = 0; i < list.items.length; i++) {
+				const suggestion = this._convertCompletionItem(list.items[i], pos, wordRangeBeforePos, i, _id);
+				// check for bad completion item
+				// for the converter did warn
+				if (suggestion) {
+					result.suggestions.push(suggestion);
 				}
-
-				ObjectIdentifier.mixin(suggestion, this._heapService.keep(item));
-				result.suggestions.push(suggestion);
 			}
+			this._cache.set(_id, list.items);
 
 			return result;
 		});
@@ -523,8 +529,8 @@ class SuggestAdapter {
 			return TPromise.as(suggestion);
 		}
 
-		const id = ObjectIdentifier.of(suggestion);
-		const item = this._heapService.get<CompletionItem>(id);
+		const { _parentId, _id } = (<IExtHostSuggestion>suggestion);
+		const item = this._cache.has(_parentId) && this._cache.get(_parentId)[_id];
 		if (!item) {
 			return TPromise.as(suggestion);
 		}
@@ -538,7 +544,7 @@ class SuggestAdapter {
 			const doc = this._documents.getDocumentData(resource).document;
 			const pos = TypeConverters.toPosition(position);
 			const wordRangeBeforePos = (doc.getWordRangeAtPosition(pos) || new Range(pos, pos)).with({ end: pos });
-			const newSuggestion = this._convertCompletionItem(resolvedItem, pos, wordRangeBeforePos);
+			const newSuggestion = this._convertCompletionItem(resolvedItem, pos, wordRangeBeforePos, _id, _parentId);
 			if (newSuggestion) {
 				mixin(suggestion, newSuggestion, true);
 			}
@@ -547,13 +553,20 @@ class SuggestAdapter {
 		});
 	}
 
-	private _convertCompletionItem(item: vscode.CompletionItem, position: vscode.Position, defaultRange: vscode.Range): modes.ISuggestion {
+	releaseCompletionItems(id: number): any {
+		this._cache.delete(id);
+	}
+
+	private _convertCompletionItem(item: vscode.CompletionItem, position: vscode.Position, defaultRange: vscode.Range, _id: number, _parentId: number): IExtHostSuggestion {
 		if (typeof item.label !== 'string' || item.label.length === 0) {
 			console.warn('INVALID text edit -> must have at least a label');
 			return undefined;
 		}
 
-		const result: modes.ISuggestion = {
+		const result: IExtHostSuggestion = {
+			//
+			_id,
+			_parentId,
 			//
 			label: item.label,
 			type: TypeConverters.CompletionItemKind.from(item.kind),
@@ -634,10 +647,12 @@ class SignatureHelpAdapter {
 class LinkProviderAdapter {
 
 	private _documents: ExtHostDocuments;
+	private _heapService: ExtHostHeapService;
 	private _provider: vscode.DocumentLinkProvider;
 
-	constructor(documents: ExtHostDocuments, provider: vscode.DocumentLinkProvider) {
+	constructor(documents: ExtHostDocuments, heapService: ExtHostHeapService, provider: vscode.DocumentLinkProvider) {
 		this._documents = documents;
+		this._heapService = heapService;
 		this._provider = provider;
 	}
 
@@ -645,29 +660,41 @@ class LinkProviderAdapter {
 		const doc = this._documents.getDocumentData(resource).document;
 
 		return asWinJsPromise(token => this._provider.provideDocumentLinks(doc, token)).then(links => {
-			if (Array.isArray(links)) {
-				return links.map(TypeConverters.DocumentLink.from);
+			if (!Array.isArray(links)) {
+				return undefined;
 			}
-			return undefined;
+			const result: modes.ILink[] = [];
+			for (const link of links) {
+				let data = TypeConverters.DocumentLink.from(link);
+				let id = this._heapService.keep(link);
+				ObjectIdentifier.mixin(data, id);
+				result.push(data);
+			}
+			return result;
 		});
 	}
 
 	resolveLink(link: modes.ILink): TPromise<modes.ILink> {
-		if (typeof this._provider.resolveDocumentLink === 'function') {
-			return asWinJsPromise(token => this._provider.resolveDocumentLink(TypeConverters.DocumentLink.to(link), token)).then(value => {
-				if (value) {
-					return TypeConverters.DocumentLink.from(value);
-				}
-				return undefined;
-			});
+		if (typeof this._provider.resolveDocumentLink !== 'function') {
+			return undefined;
 		}
-		return undefined;
+
+		const id = ObjectIdentifier.of(link);
+		const item = this._heapService.get<vscode.DocumentLink>(id);
+		if (!item) {
+			return undefined;
+		}
+
+		return asWinJsPromise(token => this._provider.resolveDocumentLink(item, token)).then(value => {
+			if (value) {
+				return TypeConverters.DocumentLink.from(value);
+			}
+			return undefined;
+		});
 	}
 }
 
 class ColorProviderAdapter {
-
-	private static _colorFormatHandlePool: number = 0;
 
 	constructor(
 		private _proxy: MainThreadLanguageFeaturesShape,
@@ -683,37 +710,30 @@ class ColorProviderAdapter {
 				return [];
 			}
 
-			const newRawColorFormats: IRawColorFormatMap = [];
-			const getFormatId = (format: string) => {
-				let id = this._colorFormatCache.get(format);
-
-				if (typeof id !== 'number') {
-					id = ColorProviderAdapter._colorFormatHandlePool++;
-					this._colorFormatCache.set(format, id);
-					newRawColorFormats.push([id, format]);
-				}
-
-				return id;
-			};
-
 			const colorInfos: IRawColorInfo[] = colors.map(ci => {
-				const availableFormats = ci.availableFormats.map(format => {
-					if (typeof format === 'string') {
-						return getFormatId(format);
-					} else {
-						return [getFormatId(format.opaque), getFormatId(format.transparent)] as [number, number];
-					}
-				});
-
 				return {
 					color: [ci.color.red, ci.color.green, ci.color.blue, ci.color.alpha] as [number, number, number, number],
-					availableFormats: availableFormats,
 					range: TypeConverters.fromRange(ci.range)
 				};
 			});
 
-			this._proxy.$registerColorFormats(newRawColorFormats);
 			return colorInfos;
+		});
+	}
+
+	provideColorPresentations(resource: URI, rawColorInfo: IRawColorInfo): TPromise<modes.IColorPresentation[]> {
+		let colorInfo: vscode.ColorInformation = {
+			range: TypeConverters.toRange(rawColorInfo.range),
+			color: {
+				red: rawColorInfo.color[0],
+				green: rawColorInfo.color[1],
+				blue: rawColorInfo.color[2],
+				alpha: rawColorInfo.color[3]
+			}
+		};
+		const doc = this._documents.getDocumentData(resource).document;
+		return asWinJsPromise(token => this._provider.provideColorPresentations(doc, colorInfo, token)).then(value => {
+			return value.map(v => TypeConverters.ColorPresentation.from(v));
 		});
 	}
 }
@@ -728,6 +748,7 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 	private static _handlePool: number = 0;
 
 	private _proxy: MainThreadLanguageFeaturesShape;
+	private _telemetry: MainThreadTelemetryShape;
 	private _documents: ExtHostDocuments;
 	private _commands: ExtHostCommands;
 	private _heapService: ExtHostHeapService;
@@ -743,6 +764,7 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 		diagnostics: ExtHostDiagnostics
 	) {
 		this._proxy = mainContext.get(MainContext.MainThreadLanguageFeatures);
+		this._telemetry = mainContext.get(MainContext.MainThreadTelemetry);
 		this._documents = documents;
 		this._commands = commands;
 		this._heapService = heapMonitor;
@@ -844,7 +866,7 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	// --- extra info
 
-	registerHoverProvider(selector: vscode.DocumentSelector, provider: vscode.HoverProvider): vscode.Disposable {
+	registerHoverProvider(selector: vscode.DocumentSelector, provider: vscode.HoverProvider, extensionId?: string): vscode.Disposable {
 		const handle = this._nextHandle();
 		this._adapter.set(handle, new HoverAdapter(this._documents, provider));
 		this._proxy.$registerHoverProvider(handle, selector);
@@ -885,7 +907,7 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	registerCodeActionProvider(selector: vscode.DocumentSelector, provider: vscode.CodeActionProvider): vscode.Disposable {
 		const handle = this._nextHandle();
-		this._adapter.set(handle, new QuickFixAdapter(this._documents, this._commands.converter, this._diagnostics, this._heapService, provider));
+		this._adapter.set(handle, new QuickFixAdapter(this._documents, this._commands.converter, this._diagnostics, provider));
 		this._proxy.$registerQuickFixSupport(handle, selector);
 		return this._createDisposable(handle);
 	}
@@ -963,17 +985,21 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	registerCompletionItemProvider(selector: vscode.DocumentSelector, provider: vscode.CompletionItemProvider, triggerCharacters: string[]): vscode.Disposable {
 		const handle = this._nextHandle();
-		this._adapter.set(handle, new SuggestAdapter(this._documents, this._commands.converter, this._heapService, provider));
-		this._proxy.$registerSuggestSupport(handle, selector, triggerCharacters);
+		this._adapter.set(handle, new SuggestAdapter(this._documents, this._commands.converter, provider));
+		this._proxy.$registerSuggestSupport(handle, selector, triggerCharacters, SuggestAdapter.supportsResolving(provider));
 		return this._createDisposable(handle);
 	}
 
-	$provideCompletionItems(handle: number, resource: URI, position: IPosition): TPromise<modes.ISuggestResult> {
-		return this._withAdapter(handle, SuggestAdapter, adapter => adapter.provideCompletionItems(resource, position));
+	$provideCompletionItems(handle: number, resource: URI, position: IPosition, context: modes.SuggestContext): TPromise<IExtHostSuggestResult> {
+		return this._withAdapter(handle, SuggestAdapter, adapter => adapter.provideCompletionItems(resource, position, context));
 	}
 
 	$resolveCompletionItem(handle: number, resource: URI, position: IPosition, suggestion: modes.ISuggestion): TPromise<modes.ISuggestion> {
 		return this._withAdapter(handle, SuggestAdapter, adapter => adapter.resolveCompletionItem(resource, position, suggestion));
+	}
+
+	$releaseCompletionItems(handle: number, id: number): void {
+		this._withAdapter(handle, SuggestAdapter, adapter => adapter.releaseCompletionItems(id));
 	}
 
 	// --- parameter hints
@@ -993,7 +1019,7 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	registerDocumentLinkProvider(selector: vscode.DocumentSelector, provider: vscode.DocumentLinkProvider): vscode.Disposable {
 		const handle = this._nextHandle();
-		this._adapter.set(handle, new LinkProviderAdapter(this._documents, provider));
+		this._adapter.set(handle, new LinkProviderAdapter(this._documents, this._heapService, provider));
 		this._proxy.$registerDocumentLinkProvider(handle, selector);
 		return this._createDisposable(handle);
 	}
@@ -1015,6 +1041,10 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	$provideDocumentColors(handle: number, resource: URI): TPromise<IRawColorInfo[]> {
 		return this._withAdapter(handle, ColorProviderAdapter, adapter => adapter.provideColors(resource));
+	}
+
+	$provideColorPresentations(handle: number, resource: URI, colorInfo: IRawColorInfo): TPromise<modes.IColorPresentation[]> {
+		return this._withAdapter(handle, ColorProviderAdapter, adapter => adapter.provideColorPresentations(resource, colorInfo));
 	}
 
 	// --- configuration

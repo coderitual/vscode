@@ -8,6 +8,7 @@ import 'vs/css!./welcomePage';
 import URI from 'vs/base/common/uri';
 import * as path from 'path';
 import * as arrays from 'vs/base/common/arrays';
+import product from 'vs/platform/node/product';
 import { WalkThroughInput } from 'vs/workbench/parts/welcome/walkThrough/node/walkThroughInput';
 import { IWorkbenchContribution } from 'vs/workbench/common/contributions';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
@@ -23,6 +24,7 @@ import { IConfigurationEditingService, ConfigurationTarget } from 'vs/workbench/
 import { localize } from 'vs/nls';
 import { Action } from 'vs/base/common/actions';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { IExperimentService } from 'vs/platform/telemetry/common/experiments';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { Schemas } from 'vs/base/common/network';
 import { IBackupFileService } from 'vs/workbench/services/backup/common/backup';
@@ -33,13 +35,12 @@ import { used } from 'vs/workbench/parts/welcome/page/electron-browser/vs_code_w
 import { ILifecycleService, StartupKind } from 'vs/platform/lifecycle/common/lifecycle';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { tildify } from 'vs/base/common/labels';
-import { isLinux } from 'vs/base/common/platform';
 import { IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import { registerColor, focusBorder, textLinkForeground, textLinkActiveForeground, foreground, descriptionForeground, contrastBorder, activeContrastBorder } from 'vs/platform/theme/common/colorRegistry';
 import { getExtraColor } from 'vs/workbench/parts/welcome/walkThrough/node/walkThroughUtils';
 import { IExtensionsWorkbenchService } from 'vs/workbench/parts/extensions/common/extensions';
 import { IStorageService } from 'vs/platform/storage/common/storage';
-import { IWorkspaceIdentifier, getWorkspaceLabel, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier } from "vs/platform/workspaces/common/workspaces";
+import { IWorkspaceIdentifier, getWorkspaceLabel, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { IEditorInputFactory, EditorInput } from 'vs/workbench/common/editor';
 
 used();
@@ -114,8 +115,10 @@ export class WelcomePageAction extends Action {
 
 interface ExtensionSuggestion {
 	name: string;
+	title?: string;
 	id: string;
 	isKeymap?: boolean;
+	isCommand?: boolean;
 }
 
 const extensionPacks: ExtensionSuggestion[] = [
@@ -124,6 +127,7 @@ const extensionPacks: ExtensionSuggestion[] = [
 	{ name: localize('welcomePage.python', "Python"), id: 'donjayamanne.python' },
 	// { name: localize('welcomePage.go', "Go"), id: 'lukehoban.go' },
 	{ name: localize('welcomePage.php', "PHP"), id: 'felixfbecker.php-pack' },
+	{ name: localize('welcomePage.azure', "Azure"), title: localize('welcomePage.showAzureExtensions', "Show Azure extensions"), id: 'workbench.extensions.action.showAzureExtensions', isCommand: true },
 	{ name: localize('welcomePage.docker', "Docker"), id: 'PeterJausovec.vscode-docker' },
 ];
 
@@ -144,6 +148,32 @@ interface Strings {
 	extensionNotFound: string;
 }
 
+/* __GDPR__
+	"installExtension" : {
+		"${include}": [
+			"${WelcomePageInstall-1}"
+		]
+	}
+*/
+/* __GDPR__
+	"installedExtension" : {
+		"${include}": [
+			"${WelcomePageInstalled-1}",
+			"${WelcomePageInstalled-2}",
+			"${WelcomePageInstalled-3}",
+			"${WelcomePageInstalled-4}",
+			"${WelcomePageInstalled-5}",
+			"${WelcomePageInstalled-6}"
+		]
+	}
+*/
+/* __GDPR__
+	"detailsExtension" : {
+		"${include}": [
+			"${WelcomePageDetails-1}"
+		]
+	}
+*/
 const extensionPackStrings: Strings = {
 	installEvent: 'installExtension',
 	installedEvent: 'installedExtension',
@@ -155,6 +185,32 @@ const extensionPackStrings: Strings = {
 	extensionNotFound: localize('welcomePage.extensionPackNotFound', "Support for {0} with id {1} could not be found."),
 };
 
+/* __GDPR__
+	"installKeymap" : {
+		"${include}": [
+			"${WelcomePageInstall-1}"
+		]
+	}
+*/
+/* __GDPR__
+	"installedKeymap" : {
+		"${include}": [
+			"${WelcomePageInstalled-1}",
+			"${WelcomePageInstalled-2}",
+			"${WelcomePageInstalled-3}",
+			"${WelcomePageInstalled-4}",
+			"${WelcomePageInstalled-5}",
+			"${WelcomePageInstalled-6}"
+		]
+	}
+*/
+/* __GDPR__
+	"detailsKeymap" : {
+		"${include}": [
+			"${WelcomePageDetails-1}"
+		]
+	}
+*/
 const keymapStrings: Strings = {
 	installEvent: 'installKeymap',
 	installedEvent: 'installedKeymap',
@@ -191,6 +247,7 @@ class WelcomePage {
 		@IExtensionsWorkbenchService private extensionsWorkbenchService: IExtensionsWorkbenchService,
 		@ILifecycleService lifecycleService: ILifecycleService,
 		@IThemeService private themeService: IThemeService,
+		@IExperimentService private experimentService: IExperimentService,
 		@ITelemetryService private telemetryService: ITelemetryService
 	) {
 		this.disposables.push(lifecycleService.onShutdown(() => this.dispose()));
@@ -207,7 +264,7 @@ class WelcomePage {
 			name: localize('welcome.title', "Welcome"),
 			resource,
 			telemetryFrom,
-			onReady: container => this.onReady(container, recentlyOpened, installedExtensions)
+			onReady: (container: HTMLElement) => this.onReady(container, recentlyOpened, installedExtensions)
 		});
 	}
 
@@ -226,18 +283,8 @@ class WelcomePage {
 		});
 
 		recentlyOpened.then(({ workspaces }) => {
-			const context = this.contextService.getWorkspace();
-			workspaces = workspaces.filter(workspace => {
-				if (this.contextService.hasMultiFolderWorkspace() && typeof workspace !== 'string' && context.id === workspace.id) {
-					return false; // do not show current workspace
-				}
-
-				if (this.contextService.hasFolderWorkspace() && isSingleFolderWorkspaceIdentifier(workspace) && this.pathEquals(context.roots[0].fsPath, workspace)) {
-					return false; // do not show current workspace (single folder case)
-				}
-
-				return true;
-			});
+			// Filter out the current workspace
+			workspaces = workspaces.filter(workspace => !this.contextService.isCurrentWorkspace(workspace));
 			if (!workspaces.length) {
 				const recent = container.querySelector('.welcomePage') as HTMLElement;
 				recent.classList.add('emptyRecent');
@@ -276,6 +323,12 @@ class WelcomePage {
 				a.setAttribute('aria-label', localize('welcomePage.openFolderWithPath', "Open folder {0} with path {1}", name, tildifiedParentFolder));
 				a.href = 'javascript:void(0)';
 				a.addEventListener('click', e => {
+					/* __GDPR__
+						"workbenchActionExecuted" : {
+							"id" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+							"from": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+						}
+					*/
 					this.telemetryService.publicLog('workbenchActionExecuted', {
 						id: 'openRecentFolder',
 						from: telemetryFrom
@@ -310,6 +363,12 @@ class WelcomePage {
 				}
 			};
 		}));
+
+		if (product.quality !== 'stable') {
+			container.querySelector('.stable-only').remove();
+		} else {
+			container.querySelector('.insiders-only').remove();
+		}
 	}
 
 	private addExtensionList(container: HTMLElement, listSelector: string, suggestions: ExtensionSuggestion[], strings: Strings) {
@@ -322,37 +381,39 @@ class WelcomePage {
 
 				const a = document.createElement('a');
 				a.innerText = extension.name;
-				a.title = extension.isKeymap ? localize('welcomePage.installKeymap', "Install {0} keymap", extension.name) : localize('welcomePage.installExtensionPack', "Install additional support for {0}", extension.name);
-				a.classList.add('installExtension');
-				a.setAttribute('data-extension', extension.id);
-				a.href = 'javascript:void(0)';
-				a.addEventListener('click', e => {
-					this.installExtension(extension, strings);
-					e.preventDefault();
-					e.stopPropagation();
-				});
-				list.appendChild(a);
+				a.title = extension.title || (extension.isKeymap ? localize('welcomePage.installKeymap', "Install {0} keymap", extension.name) : localize('welcomePage.installExtensionPack', "Install additional support for {0}", extension.name));
+				if (extension.isCommand) {
+					a.href = `command:${extension.id}`;
+					list.appendChild(a);
+				} else {
+					a.classList.add('installExtension');
+					a.setAttribute('data-extension', extension.id);
+					a.href = 'javascript:void(0)';
+					a.addEventListener('click', e => {
+						this.installExtension(extension, strings);
+						e.preventDefault();
+						e.stopPropagation();
+					});
+					list.appendChild(a);
 
-				const span = document.createElement('span');
-				span.innerText = extension.name;
-				span.title = extension.isKeymap ? localize('welcomePage.installedKeymap', "{0} keymap is already installed", extension.name) : localize('welcomePage.installedExtensionPack', "{0} support is already installed", extension.name);
-				span.classList.add('enabledExtension');
-				span.setAttribute('data-extension', extension.id);
-				list.appendChild(span);
+					const span = document.createElement('span');
+					span.innerText = extension.name;
+					span.title = extension.isKeymap ? localize('welcomePage.installedKeymap', "{0} keymap is already installed", extension.name) : localize('welcomePage.installedExtensionPack', "{0} support is already installed", extension.name);
+					span.classList.add('enabledExtension');
+					span.setAttribute('data-extension', extension.id);
+					list.appendChild(span);
+				}
 			});
 		}
 	}
 
-	private pathEquals(path1: string, path2: string): boolean {
-		if (!isLinux) {
-			path1 = path1.toLowerCase();
-			path2 = path2.toLowerCase();
-		}
-
-		return path1 === path2;
-	}
-
 	private installExtension(extensionSuggestion: ExtensionSuggestion, strings: Strings): void {
+		/* __GDPR__FRAGMENT__
+			"WelcomePageInstall-1" : {
+				"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+				"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+			}
+		*/
 		this.telemetryService.publicLog(strings.installEvent, {
 			from: telemetryFrom,
 			extensionId: extensionSuggestion.id,
@@ -360,6 +421,13 @@ class WelcomePage {
 		this.instantiationService.invokeFunction(getInstalledExtensions).then(extensions => {
 			const installedExtension = arrays.first(extensions, extension => extension.identifier === extensionSuggestion.id);
 			if (installedExtension && installedExtension.globallyEnabled) {
+				/* __GDPR__FRAGMENT__
+					"WelcomePageInstalled-1" : {
+						"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+						"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+						"outcome": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+					}
+				*/
 				this.telemetryService.publicLog(strings.installedEvent, {
 					from: telemetryFrom,
 					extensionId: extensionSuggestion.id,
@@ -368,13 +436,13 @@ class WelcomePage {
 				this.messageService.show(Severity.Info, strings.alreadyInstalled.replace('{0}', extensionSuggestion.name));
 				return;
 			}
-			const foundAndInstalled = installedExtension ? TPromise.as(true) : this.extensionGalleryService.query({ names: [extensionSuggestion.id] })
+			const foundAndInstalled = installedExtension ? TPromise.as(true) : this.extensionGalleryService.query({ names: [extensionSuggestion.id], source: telemetryFrom })
 				.then(result => {
 					const [extension] = result.firstPage;
 					if (!extension) {
 						return false;
 					}
-					return this.extensionManagementService.installFromGallery(extension, false)
+					return this.extensionManagementService.installFromGallery(extension)
 						.then(() => {
 							// TODO: Do this as part of the install to avoid multiple events.
 							return this.extensionEnablementService.setEnablement(extensionSuggestion.id, false);
@@ -402,6 +470,13 @@ class WelcomePage {
 									if (found) {
 										return this.extensionEnablementService.setEnablement(extensionSuggestion.id, true)
 											.then(() => {
+												/* __GDPR__FRAGMENT__
+													"WelcomePageInstalled-2" : {
+														"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+														"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+														"outcome": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+													}
+												*/
 												this.telemetryService.publicLog(strings.installedEvent, {
 													from: telemetryFrom,
 													extensionId: extensionSuggestion.id,
@@ -410,6 +485,13 @@ class WelcomePage {
 												return this.windowService.reloadWindow();
 											});
 									} else {
+										/* __GDPR__FRAGMENT__
+											"WelcomePageInstalled-3" : {
+												"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+												"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+												"outcome": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+											}
+										*/
 										this.telemetryService.publicLog(strings.installedEvent, {
 											from: telemetryFrom,
 											extensionId: extensionSuggestion.id,
@@ -420,6 +502,14 @@ class WelcomePage {
 									}
 								});
 							}).then(null, err => {
+								/* __GDPR__FRAGMENT__
+									"WelcomePageInstalled-4" : {
+										"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+										"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+										"outcome": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+										"error": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth" }
+									}
+								*/
 								this.telemetryService.publicLog(strings.installedEvent, {
 									from: telemetryFrom,
 									extensionId: extensionSuggestion.id,
@@ -431,6 +521,12 @@ class WelcomePage {
 						return TPromise.as(true);
 					}),
 					new Action('details', localize('details', "Details"), null, true, () => {
+						/* __GDPR__FRAGMENT__
+							"WelcomePageDetails-1" : {
+								"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+								"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+							}
+						*/
 						this.telemetryService.publicLog(strings.detailsEvent, {
 							from: telemetryFrom,
 							extensionId: extensionSuggestion.id,
@@ -441,6 +537,13 @@ class WelcomePage {
 						return TPromise.as(false);
 					}),
 					new Action('cancel', localize('cancel', "Cancel"), null, true, () => {
+						/* __GDPR__FRAGMENT__
+							"WelcomePageInstalled-5" : {
+								"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+								"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+								"outcome": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+							}
+						*/
 						this.telemetryService.publicLog(strings.installedEvent, {
 							from: telemetryFrom,
 							extensionId: extensionSuggestion.id,
@@ -450,7 +553,15 @@ class WelcomePage {
 					})
 				]
 			});
-		}).then<void>(null, err => {
+		}).then(null, err => {
+			/* __GDPR__FRAGMENT__
+				"WelcomePageInstalled-6" : {
+					"from" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+					"extensionId": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+					"outcome": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+					"error": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth" }
+				}
+			*/
 			this.telemetryService.publicLog(strings.installedEvent, {
 				from: telemetryFrom,
 				extensionId: extensionSuggestion.id,

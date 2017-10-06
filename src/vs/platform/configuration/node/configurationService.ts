@@ -8,12 +8,12 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import { ConfigWatcher } from 'vs/base/node/config';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { IConfigurationRegistry, Extensions } from 'vs/platform/configuration/common/configurationRegistry';
-import { IDisposable, toDisposable, Disposable } from 'vs/base/common/lifecycle';
+import { IDisposable, Disposable } from 'vs/base/common/lifecycle';
 import { ConfigurationSource, IConfigurationService, IConfigurationServiceEvent, IConfigurationValue, IConfigurationKeys, ConfigurationModel, IConfigurationOverrides, Configuration, IConfigurationValues, IConfigurationData } from 'vs/platform/configuration/common/configuration';
 import { CustomConfigurationModel, DefaultConfigurationModel } from 'vs/platform/configuration/common/model';
 import Event, { Emitter } from 'vs/base/common/event';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { onUnexpectedError } from "vs/base/common/errors";
+import { onUnexpectedError } from 'vs/base/common/errors';
 
 export class ConfigurationService<T> extends Disposable implements IConfigurationService, IDisposable {
 
@@ -37,7 +37,7 @@ export class ConfigurationService<T> extends Disposable implements IConfiguratio
 				return userConfigModel;
 			}
 		});
-		this._register(toDisposable(() => this.userConfigModelWatcher.dispose()));
+		this._register(this.userConfigModelWatcher);
 
 		// Listeners
 		this._register(this.userConfigModelWatcher.onDidUpdateConfiguration(() => this.onConfigurationChange(ConfigurationSource.User)));

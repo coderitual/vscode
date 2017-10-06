@@ -17,12 +17,12 @@ export interface IJSONSchema {
 	additionalProperties?: boolean | IJSONSchema;
 	minProperties?: number;
 	maxProperties?: number;
-	dependencies?: IJSONSchemaMap | string[];
+	dependencies?: IJSONSchemaMap | { [name: string]: string[] };
 	items?: IJSONSchema | IJSONSchema[];
 	minItems?: number;
 	maxItems?: number;
 	uniqueItems?: boolean;
-	additionalItems?: boolean;
+	additionalItems?: boolean | IJSONSchema;
 	pattern?: string;
 	minLength?: number;
 	maxLength?: number;
@@ -45,6 +45,7 @@ export interface IJSONSchema {
 	patternErrorMessage?: string; // VSCode extension
 	deprecationMessage?: string; // VSCode extension
 	enumDescriptions?: string[]; // VSCode extension
+	doNotSuggest?: boolean; // VSCode extension
 }
 
 export interface IJSONSchemaMap {

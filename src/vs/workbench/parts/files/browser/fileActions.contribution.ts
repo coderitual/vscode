@@ -13,13 +13,13 @@ import { Scope, IActionBarRegistry, Extensions as ActionBarExtensions, ActionBar
 import { GlobalNewUntitledFileAction, SaveFileAsAction, OpenFileAction, ShowOpenedFileInNewWindow, CopyPathAction, GlobalCopyPathAction, RevealInOSAction, GlobalRevealInOSAction, pasteIntoFocusedFilesExplorerViewItem, FocusOpenEditorsView, FocusFilesExplorer, GlobalCompareResourcesAction, GlobalNewFileAction, GlobalNewFolderAction, RevertFileAction, SaveFilesAction, SaveAllAction, SaveFileAction, MoveFileToTrashAction, TriggerRenameFileAction, PasteFileAction, CopyFileAction, SelectResourceForCompareAction, CompareResourcesAction, NewFolderAction, NewFileAction, OpenToSideAction, ShowActiveFileInExplorer, CollapseExplorerView, RefreshExplorerView, CompareWithSavedAction } from 'vs/workbench/parts/files/browser/fileActions';
 import { revertLocalChangesCommand, acceptLocalChangesCommand, CONFLICT_RESOLUTION_CONTEXT } from 'vs/workbench/parts/files/browser/saveErrorHandler';
 import { SyncActionDescriptor, MenuId, MenuRegistry } from 'vs/platform/actions/common/actions';
-import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actionRegistry';
+import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actions';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { FileStat, Model } from 'vs/workbench/parts/files/common/explorerModel';
 import { KeyMod, KeyChord, KeyCode } from 'vs/base/common/keyCodes';
-import { OpenFolderAction, OpenFileFolderAction, AddRootFolderAction, RemoveRootFolderAction } from 'vs/workbench/browser/actions/workspaceActions';
+import { OpenFolderAction, OpenFileFolderAction, AddRootFolderAction, RemoveRootFolderAction, OpenFolderSettingsAction } from 'vs/workbench/browser/actions/workspaceActions';
 import { copyFocusedFilesExplorerViewItem, revealInOSFocusedFilesExplorerItem, openFocusedExplorerItemSideBySideCommand, copyPathOfFocusedExplorerItem, copyPathCommand, revealInExplorerCommand, revealInOSCommand, openFolderPickerCommand, openWindowCommand, openFileInNewWindowCommand, deleteFocusedFilesExplorerViewItemCommand, moveFocusedFilesExplorerViewItemToTrashCommand, renameFocusedFilesExplorerViewItemCommand } from 'vs/workbench/parts/files/browser/fileCommands';
 import { CommandsRegistry, ICommandHandler } from 'vs/platform/commands/common/commands';
 import { ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
@@ -65,7 +65,7 @@ class FilesViewerActionContributor extends ActionBarContributor {
 		}
 
 		// Directory Actions
-		if (stat.isDirectory) {
+		if (stat.isDirectory && stat.exists) {
 
 			// New File
 			actions.push(this.instantiationService.createInstance(NewFileAction, tree, <FileStat>stat));
@@ -92,15 +92,18 @@ class FilesViewerActionContributor extends ActionBarContributor {
 		}
 
 		if (stat.isRoot && this.environmentService.appQuality !== 'stable') {
-			let action: Action = this.instantiationService.createInstance(AddRootFolderAction, AddRootFolderAction.ID, AddRootFolderAction.LABEL);
-			action.order = 52;
-			actions.push(action);
-			if (this.contextService.getWorkspace().roots.length > 1) {
-				action = this.instantiationService.createInstance(RemoveRootFolderAction, stat.resource, RemoveRootFolderAction.ID, RemoveRootFolderAction.LABEL);
-				action.order = 53;
-				actions.push(action);
-			}
-			actions.push(new Separator(null, 54));
+			const addRootFolderAction: Action = this.instantiationService.createInstance(AddRootFolderAction, AddRootFolderAction.ID, AddRootFolderAction.LABEL);
+			addRootFolderAction.order = 52;
+			actions.push(addRootFolderAction);
+
+			const openFolderSettingsActions = this.instantiationService.createInstance(OpenFolderSettingsAction, stat.resource, OpenFolderSettingsAction.ID, OpenFolderSettingsAction.LABEL);
+			openFolderSettingsActions.order = 53;
+			actions.push(openFolderSettingsActions);
+			const removeRootFolderAction = this.instantiationService.createInstance(RemoveRootFolderAction, stat.resource, RemoveRootFolderAction.ID, RemoveRootFolderAction.LABEL);
+			removeRootFolderAction.order = 54;
+			actions.push(removeRootFolderAction);
+
+			actions.push(new Separator(null, 55));
 		}
 
 		// Copy File/Folder
@@ -165,17 +168,16 @@ class ExplorerViewersActionContributor extends ActionBarContributor {
 
 	public getSecondaryActions(context: any): IAction[] {
 		const actions: IAction[] = [];
+		const fileResource = explorerItemToFileResource(context.element);
+		const resource = fileResource.resource;
 
-		if (this.hasSecondaryActions(context)) {
-			const fileResource = explorerItemToFileResource(context.element);
-			const resource = fileResource.resource;
-
-			// Reveal file in OS native explorer
+		// Reveal file in OS native explorer
+		if (resource.scheme === 'file') {
 			actions.push(this.instantiationService.createInstance(RevealInOSAction, resource));
-
-			// Copy Path
-			actions.push(this.instantiationService.createInstance(CopyPathAction, resource));
 		}
+
+		// Copy Path
+		actions.push(this.instantiationService.createInstance(CopyPathAction, resource));
 
 		return actions;
 	}
@@ -193,7 +195,7 @@ const registry = Registry.as<IWorkbenchActionRegistry>(ActionExtensions.Workbenc
 registry.registerWorkbenchAction(new SyncActionDescriptor(GlobalCopyPathAction, GlobalCopyPathAction.ID, GlobalCopyPathAction.LABEL, { primary: KeyChord(KeyMod.CtrlCmd | KeyCode.KEY_K, KeyCode.KEY_P) }), 'Files: Copy Path of Active File', category);
 registry.registerWorkbenchAction(new SyncActionDescriptor(SaveFileAction, SaveFileAction.ID, SaveFileAction.LABEL, { primary: KeyMod.CtrlCmd | KeyCode.KEY_S }), 'Files: Save', category);
 registry.registerWorkbenchAction(new SyncActionDescriptor(SaveAllAction, SaveAllAction.ID, SaveAllAction.LABEL, { primary: void 0, mac: { primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KEY_S }, win: { primary: KeyChord(KeyMod.CtrlCmd | KeyCode.KEY_K, KeyCode.KEY_S) } }), 'Files: Save All', category);
-registry.registerWorkbenchAction(new SyncActionDescriptor(SaveFilesAction, SaveFilesAction.ID, null /* only for programmatic trigger */), null);
+registry.registerWorkbenchAction(new SyncActionDescriptor(SaveFilesAction, SaveFilesAction.ID, SaveFilesAction.LABEL), 'Files: Save All Files', category);
 registry.registerWorkbenchAction(new SyncActionDescriptor(RevertFileAction, RevertFileAction.ID, RevertFileAction.LABEL), 'Files: Revert File', category);
 registry.registerWorkbenchAction(new SyncActionDescriptor(GlobalNewFileAction, GlobalNewFileAction.ID, GlobalNewFileAction.LABEL), 'Files: New File', category);
 registry.registerWorkbenchAction(new SyncActionDescriptor(GlobalNewFolderAction, GlobalNewFolderAction.ID, GlobalNewFolderAction.LABEL), 'Files: New Folder', category);

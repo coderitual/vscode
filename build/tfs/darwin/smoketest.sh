@@ -21,8 +21,12 @@ step "Install distro dependencies" \
 step "Build minified & upload source maps" \
 	npm run gulp -- vscode-darwin-min
 
+function runSmokeTest {
+	SCREENSHOTS="$AGENT_BUILDDIRECTORY/smoketest-screenshots"
+	rm -rf $SCREENSHOTS
+
+	npm run smoketest -- --build "$AGENT_BUILDDIRECTORY/VSCode-darwin/Visual Studio Code - Insiders.app"  --screenshots $SCREENSHOTS
+}
+
 step "Run smoke test" \
-	pushd test/smoke
-	npm install
-	npm test -- --latest "$AGENT_BUILDDIRECTORY/VSCode-darwin/Visual Studio Code - Insiders.app/Contents/MacOS/Electron"
-	popd
+	runSmokeTest

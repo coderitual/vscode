@@ -5,7 +5,7 @@
 'use strict';
 
 import { BulkListenerCallback } from 'vs/base/common/eventEmitter';
-import { MarkedString } from 'vs/base/common/htmlContent';
+import { IMarkdownString } from 'vs/base/common/htmlContent';
 import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
@@ -19,7 +19,7 @@ import { IndentRange } from 'vs/editor/common/model/indentRanges';
 import { ITextSource } from 'vs/editor/common/model/textSource';
 import {
 	ModelRawContentChangedEvent, IModelContentChangedEvent, IModelDecorationsChangedEvent,
-	IModelLanguageChangedEvent, IModelOptionsChangedEvent
+	IModelLanguageChangedEvent, IModelOptionsChangedEvent, IModelLanguageConfigurationChangedEvent
 } from 'vs/editor/common/model/textModelEvents';
 import * as editorOptions from 'vs/editor/common/config/editorOptions';
 import { ICursorPositionChangedEvent, ICursorSelectionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
@@ -77,11 +77,11 @@ export interface IModelDecorationOptions {
 	/**
 	 * Message to be rendered when hovering over the glyph margin decoration.
 	 */
-	glyphMarginHoverMessage?: MarkedString | MarkedString[];
+	glyphMarginHoverMessage?: IMarkdownString | IMarkdownString[];
 	/**
-	 * Array of MarkedString to render as the decoration message.
+	 * Array of MarkdownString to render as the decoration message.
 	 */
-	hoverMessage?: MarkedString | MarkedString[];
+	hoverMessage?: IMarkdownString | IMarkdownString[];
 	/**
 	 * Should the decoration expand to encompass a whole line.
 	 */
@@ -585,25 +585,16 @@ export interface ITextModel {
 	 */
 	getLineContent(lineNumber: number): string;
 
-	/**
-	 * @internal
-	 */
-	getIndentLevel(lineNumber: number): number;
-
-	/**
-	 * @internal
-	 */
-	getIndentRanges(): IndentRange[];
-
-	/**
-	 * @internal
-	 */
-	getLineIndentGuide(lineNumber: number): number;
 
 	/**
 	 * Get the text for all lines.
 	 */
 	getLinesContent(): string[];
+
+	/**
+	 * @internal
+	 */
+	getIndentLevel(lineNumber: number): number;
 
 	/**
 	 * Get the end of line sequence predominantly used in the text buffer.
@@ -820,10 +811,19 @@ export interface ITokenizedModel extends ITextModel {
 	forceTokenization(lineNumber: number): void;
 
 	/**
-	 * Get the line number of the first line whose tokens might be inaccurate.
+	 * If it is cheap, force tokenization information for `lineNumber` to be accurate.
+	 * This is based on a heuristic.
 	 * @internal
 	 */
-	getFirstInvalidLineNumber(): number;
+	tokenizeIfCheap(lineNumber: number): void;
+
+	/**
+	 * Check if calling `forceTokenization` for this `lineNumber` will be cheap (time-wise).
+	 * This is based on a heuristic.
+	 * @internal
+	 */
+	isCheapToTokenize(lineNumber: number): boolean;
+
 	/**
 	 * Get the tokens for the line `lineNumber`.
 	 * The tokens might be inaccurate. Use `forceTokenization` to ensure accurate tokens.
@@ -903,6 +903,16 @@ export interface ITokenizedModel extends ITextModel {
 	 * @internal
 	 */
 	matchBracket(position: IPosition): [Range, Range];
+
+	/**
+	 * @internal
+	 */
+	getIndentRanges(): IndentRange[];
+
+	/**
+	 * @internal
+	 */
+	getLineIndentGuide(lineNumber: number): number;
 }
 
 /**
@@ -1141,6 +1151,11 @@ export interface IModel extends IReadOnlyModel, IEditableTextModel, ITextModelWi
 	 */
 	onDidChangeLanguage(listener: (e: IModelLanguageChangedEvent) => void): IDisposable;
 	/**
+	 * An event emitted when the language configuration associated with the model has changed.
+	 * @event
+	 */
+	onDidChangeLanguageConfiguration(listener: (e: IModelLanguageConfigurationChangedEvent) => void): IDisposable;
+	/**
 	 * An event emitted right before disposing the model.
 	 * @event
 	 */
@@ -1371,6 +1386,11 @@ export interface IDiffEditorViewState {
  */
 export type IEditorViewState = ICodeEditorViewState | IDiffEditorViewState;
 
+export const enum ScrollType {
+	Smooth = 0,
+	Immediate = 1,
+}
+
 /**
  * An editor.
  */
@@ -1475,32 +1495,32 @@ export interface IEditor {
 	/**
 	 * Scroll vertically as necessary and reveal a line.
 	 */
-	revealLine(lineNumber: number): void;
+	revealLine(lineNumber: number, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically as necessary and reveal a line centered vertically.
 	 */
-	revealLineInCenter(lineNumber: number): void;
+	revealLineInCenter(lineNumber: number, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically as necessary and reveal a line centered vertically only if it lies outside the viewport.
 	 */
-	revealLineInCenterIfOutsideViewport(lineNumber: number): void;
+	revealLineInCenterIfOutsideViewport(lineNumber: number, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a position.
 	 */
-	revealPosition(position: IPosition, revealVerticalInCenter?: boolean, revealHorizontal?: boolean): void;
+	revealPosition(position: IPosition, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a position centered vertically.
 	 */
-	revealPositionInCenter(position: IPosition): void;
+	revealPositionInCenter(position: IPosition, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a position centered vertically only if it lies outside the viewport.
 	 */
-	revealPositionInCenterIfOutsideViewport(position: IPosition): void;
+	revealPositionInCenterIfOutsideViewport(position: IPosition, scrollType?: ScrollType): void;
 
 	/**
 	 * Returns the primary selection of the editor.
@@ -1542,37 +1562,37 @@ export interface IEditor {
 	/**
 	 * Scroll vertically as necessary and reveal lines.
 	 */
-	revealLines(startLineNumber: number, endLineNumber: number): void;
+	revealLines(startLineNumber: number, endLineNumber: number, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically as necessary and reveal lines centered vertically.
 	 */
-	revealLinesInCenter(lineNumber: number, endLineNumber: number): void;
+	revealLinesInCenter(lineNumber: number, endLineNumber: number, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically as necessary and reveal lines centered vertically only if it lies outside the viewport.
 	 */
-	revealLinesInCenterIfOutsideViewport(lineNumber: number, endLineNumber: number): void;
+	revealLinesInCenterIfOutsideViewport(lineNumber: number, endLineNumber: number, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a range.
 	 */
-	revealRange(range: IRange): void;
+	revealRange(range: IRange, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a range centered vertically.
 	 */
-	revealRangeInCenter(range: IRange): void;
+	revealRangeInCenter(range: IRange, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a range at the top of the viewport.
 	 */
-	revealRangeAtTop(range: IRange): void;
+	revealRangeAtTop(range: IRange, scrollType?: ScrollType): void;
 
 	/**
 	 * Scroll vertically or horizontally as necessary and reveal a range centered vertically only if it lies outside the viewport.
 	 */
-	revealRangeInCenterIfOutsideViewport(range: IRange): void;
+	revealRangeInCenterIfOutsideViewport(range: IRange, scrollType?: ScrollType): void;
 
 	/**
 	 * Directly trigger a handler or an editor action.
@@ -1632,7 +1652,7 @@ export interface IEditorContribution {
 /**
  * @internal
  */
-export function isThemeColor(o): o is ThemeColor {
+export function isThemeColor(o: any): o is ThemeColor {
 	return o && typeof o.id === 'string';
 }
 
@@ -1719,7 +1739,7 @@ export interface IDecorationInstanceRenderOptions extends IThemeDecorationInstan
  */
 export interface IDecorationOptions {
 	range: IRange;
-	hoverMessage?: MarkedString | MarkedString[];
+	hoverMessage?: IMarkdownString | IMarkdownString[];
 	renderOptions?: IDecorationInstanceRenderOptions;
 }
 
@@ -1734,6 +1754,11 @@ export interface ICommonCodeEditor extends IEditor {
 	 * @event
 	 */
 	onDidChangeModelLanguage(listener: (e: IModelLanguageChangedEvent) => void): IDisposable;
+	/**
+	 * An event emitted when the language configuration of the current model has changed.
+	 * @event
+	 */
+	onDidChangeModelLanguageConfiguration(listener: (e: IModelLanguageConfigurationChangedEvent) => void): IDisposable;
 	/**
 	 * An event emitted when the options of the current model has changed.
 	 * @event

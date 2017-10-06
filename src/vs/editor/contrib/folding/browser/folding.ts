@@ -237,6 +237,9 @@ export class FoldingController implements IFoldingController {
 		this.localToDispose.push(this.contentChangedScheduler);
 		this.localToDispose.push(this.cursorChangedScheduler);
 
+		this.localToDispose.push(model.onDidChangeLanguageConfiguration(e => {
+			this.contentChangedScheduler.schedule();
+		}));
 		this.localToDispose.push(this.editor.onDidChangeModelContent(e => this.contentChangedScheduler.schedule()));
 		this.localToDispose.push(this.editor.onDidChangeCursorPosition((e) => {
 
@@ -315,12 +318,22 @@ export class FoldingController implements IFoldingController {
 
 		let model = this.editor.getModel();
 
+
 		let iconClicked = false;
 		switch (e.target.type) {
 			case MouseTargetType.GUTTER_LINE_DECORATIONS:
 				iconClicked = true;
 				break;
 			case MouseTargetType.CONTENT_EMPTY:
+				if (range.startColumn === model.getLineMaxColumn(range.startLineNumber)) {
+					let editorCoords = dom.getDomNodePagePosition(this.editor.getDomNode());
+					let pos = this.editor.getScrolledVisiblePosition(range.getEndPosition());
+					if (e.event.posy > editorCoords.top + pos.top + pos.height) {
+						return;
+					}
+					break;
+				}
+				return;
 			case MouseTargetType.CONTENT_TEXT:
 				if (range.startColumn === model.getLineMaxColumn(range.startLineNumber)) {
 					break;
@@ -382,7 +395,7 @@ export class FoldingController implements IFoldingController {
 			if (!decRange) {
 				return;
 			}
-			let isLineHidden = line => line > decRange.startLineNumber && line <= decRange.endLineNumber;
+			let isLineHidden = (line: number) => line > decRange.startLineNumber && line <= decRange.endLineNumber;
 			hiddenAreas.push(new Range(decRange.startLineNumber + 1, 1, decRange.endLineNumber, 1));
 			selections.forEach((selection, i) => {
 				if (isLineHidden(selection.getStartPosition().lineNumber)) {
@@ -400,7 +413,7 @@ export class FoldingController implements IFoldingController {
 		}
 		this.editor.setHiddenAreas(hiddenAreas);
 		if (focusLine) {
-			this.editor.revealPositionInCenterIfOutsideViewport({ lineNumber: focusLine, column: 1 });
+			this.editor.revealPositionInCenterIfOutsideViewport({ lineNumber: focusLine, column: 1 }, editorCommon.ScrollType.Smooth);
 		}
 	}
 

@@ -256,7 +256,7 @@ export class Controller extends DefaultController {
 		const group = element instanceof EditorGroup ? element : (<OpenEditor>element).editorGroup;
 		const editor = element instanceof OpenEditor ? (<OpenEditor>element).editorInput : undefined;
 
-		let anchor = { x: event.posx + 1, y: event.posy };
+		let anchor = { x: event.posx, y: event.posy };
 		this.contextMenuService.showContextMenu({
 			getAnchor: () => anchor,
 			getActions: () => this.actionProvider.getSecondaryActions(tree, element),
@@ -273,6 +273,12 @@ export class Controller extends DefaultController {
 
 	public openEditor(element: OpenEditor, options: { preserveFocus: boolean; pinned: boolean; sideBySide: boolean; }): void {
 		if (element) {
+			/* __GDPR__
+				"workbenchActionExecuted" : {
+					"id" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+					"from": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+				}
+			*/
 			this.telemetryService.publicLog('workbenchActionExecuted', { id: 'workbench.files.openFile', from: 'openEditors' });
 			let position = this.model.positionOfGroup(element.editorGroup);
 			if (options.sideBySide && position !== Position.THREE) {

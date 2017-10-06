@@ -7,9 +7,12 @@
 
 import Event, { filterEvent, mapEvent, any } from 'vs/base/common/event';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { IWindowService, IWindowsService, INativeOpenDialogOptions } from 'vs/platform/windows/common/windows';
+import { IWindowService, IWindowsService, INativeOpenDialogOptions, IEnterWorkspaceResult } from 'vs/platform/windows/common/windows';
 import { remote } from 'electron';
-import { IRecentlyOpened } from "vs/platform/history/common/history";
+import { IRecentlyOpened } from 'vs/platform/history/common/history';
+import { ICommandAction } from 'vs/platform/actions/common/actions';
+import { isMacintosh } from 'vs/base/common/platform';
+import { normalizeNFC } from 'vs/base/common/strings';
 
 export class WindowService implements IWindowService {
 
@@ -68,8 +71,12 @@ export class WindowService implements IWindowService {
 		return this.windowsService.openWorkspace(this.windowId);
 	}
 
-	newWorkspace(): TPromise<void> {
-		return this.windowsService.newWorkspace(this.windowId);
+	createAndEnterWorkspace(folderPaths?: string[], path?: string): TPromise<IEnterWorkspaceResult> {
+		return this.windowsService.createAndEnterWorkspace(this.windowId, folderPaths, path);
+	}
+
+	saveAndEnterWorkspace(path: string): TPromise<IEnterWorkspaceResult> {
+		return this.windowsService.saveAndEnterWorkspace(this.windowId, path);
 	}
 
 	closeWindow(): TPromise<void> {
@@ -116,7 +123,11 @@ export class WindowService implements IWindowService {
 		return this.windowsService.setDocumentEdited(this.windowId, flag);
 	}
 
-	showMessageBox(options: Electron.ShowMessageBoxOptions): number {
+	show(): TPromise<void> {
+		return this.windowsService.showWindow(this.windowId);
+	}
+
+	showMessageBox(options: Electron.MessageBoxOptions): number {
 		return remote.dialog.showMessageBox(remote.getCurrentWindow(), options);
 	}
 
@@ -125,7 +136,13 @@ export class WindowService implements IWindowService {
 			return remote.dialog.showSaveDialog(remote.getCurrentWindow(), options, callback);
 		}
 
-		return remote.dialog.showSaveDialog(remote.getCurrentWindow(), options); // https://github.com/electron/electron/issues/4936
+		let path = remote.dialog.showSaveDialog(remote.getCurrentWindow(), options); // https://github.com/electron/electron/issues/4936
+
+		if (path && isMacintosh) {
+			path = normalizeNFC(path); // normalize paths returned from the OS
+		}
+
+		return path;
 	}
 
 	showOpenDialog(options: Electron.OpenDialogOptions, callback?: (fileNames: string[]) => void): string[] {
@@ -133,6 +150,16 @@ export class WindowService implements IWindowService {
 			return remote.dialog.showOpenDialog(remote.getCurrentWindow(), options, callback);
 		}
 
-		return remote.dialog.showOpenDialog(remote.getCurrentWindow(), options); // https://github.com/electron/electron/issues/4936
+		let paths = remote.dialog.showOpenDialog(remote.getCurrentWindow(), options); // https://github.com/electron/electron/issues/4936
+
+		if (paths && paths.length > 0 && isMacintosh) {
+			paths = paths.map(path => normalizeNFC(path)); // normalize paths returned from the OS
+		}
+
+		return paths;
+	}
+
+	updateTouchBar(items: ICommandAction[][]): TPromise<void> {
+		return this.windowsService.updateTouchBar(this.windowId, items);
 	}
 }
