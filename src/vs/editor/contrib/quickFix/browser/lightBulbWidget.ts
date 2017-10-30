@@ -12,6 +12,7 @@ import { GlobalMouseMoveMonitor, IStandardMouseMoveEventData, standardMouseMoveM
 import * as dom from 'vs/base/browser/dom';
 import { ICodeEditor, IContentWidget, IContentWidgetPosition, ContentWidgetPositionPreference } from 'vs/editor/browser/editorBrowser';
 import { QuickFixComputeEvent } from './quickFixModel';
+import { computeIndentLevel } from 'vs/editor/common/model/modelLine';
 
 export class LightBulbWidget implements IDisposable, IContentWidget {
 
@@ -35,6 +36,8 @@ export class LightBulbWidget implements IDisposable, IContentWidget {
 		this._editor = editor;
 		this._editor.addContentWidget(this);
 
+		this._disposables.push(this._editor.onDidChangeModel(_ => this._futureFixes.cancel()));
+		this._disposables.push(this._editor.onDidChangeModelLanguage(_ => this._futureFixes.cancel()));
 		this._disposables.push(dom.addStandardDisposableListener(this._domNode, 'click', e => {
 			// a bit of extra work to make sure the menu
 			// doesn't cover the line-text
@@ -136,7 +139,9 @@ export class LightBulbWidget implements IDisposable, IContentWidget {
 		}
 		const { lineNumber } = this._model.position;
 		const model = this._editor.getModel();
-		const indent = model.getIndentLevel(lineNumber);
+		const tabSize = model.getOptions().tabSize;
+		const lineContent = model.getLineContent(lineNumber);
+		const indent = computeIndentLevel(lineContent, tabSize);
 		const lineHasSpace = config.fontInfo.spaceWidth * indent > 22;
 
 		let effectiveLineNumber = lineNumber;

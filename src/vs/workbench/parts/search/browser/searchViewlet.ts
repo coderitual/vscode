@@ -388,7 +388,7 @@ export class SearchViewlet extends Viewlet {
 			type: 'question'
 		};
 
-		if (this.messageService.confirm(confirmation)) {
+		if (this.messageService.confirmSync(confirmation)) {
 			this.searchWidget.setReplaceAllActionState(false);
 			this.viewModel.searchResult.replaceAll(progressRunner).then(() => {
 				progressRunner.done();
@@ -655,15 +655,14 @@ export class SearchViewlet extends Viewlet {
 	public focus(): void {
 		super.focus();
 
-		// If focus is inside the search viewlet, don't add the selected text to the search widget
-		if (!(document.activeElement.compareDocumentPosition(this.domNode.getHTMLElement()) & Node.DOCUMENT_POSITION_CONTAINS)) {
-			const selectedText = this.getSearchTextFromEditor();
-			if (selectedText) {
-				this.searchWidget.searchInput.setValue(selectedText);
-			}
-		}
-
 		this.searchWidget.focus();
+	}
+
+	public takeEditorText(): void {
+		const selectedText = this.getSearchTextFromEditor();
+		if (selectedText) {
+			this.searchWidget.searchInput.setValue(selectedText);
+		}
 	}
 
 	public focusNextInputBox(): void {

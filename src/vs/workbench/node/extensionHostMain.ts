@@ -229,16 +229,19 @@ export class ExtensionHostMain {
 			return folderConfig.get('useRipgrep', true);
 		});
 
+		const followSymlinks = this._extHostConfiguration.getConfiguration('search').get('followSymlinks', true);
+
 		const query: ISearchQuery = {
 			folderQueries,
 			type: QueryType.File,
-			maxResults: 1,
+			exists: true,
 			includePattern: includes,
-			useRipgrep
+			useRipgrep,
+			ignoreSymlinks: !followSymlinks
 		};
 
 		let result = await this._diskSearch.search(query);
-		if (result.results.length > 0) {
+		if (result.limitHit) {
 			// a file was found matching one of the glob patterns
 			return (
 				this._extensionService.activateById(extensionId, true)
