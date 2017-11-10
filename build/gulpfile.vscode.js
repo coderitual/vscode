@@ -45,8 +45,8 @@ const nodeModules = ['electron', 'original-fs']
 // Build
 
 const builtInExtensions = [
-	{ name: 'ms-vscode.node-debug', version: '1.18.2' },
-	{ name: 'ms-vscode.node-debug2', version: '1.18.4' }
+	{ name: 'ms-vscode.node-debug', version: '1.19.0' },
+	{ name: 'ms-vscode.node-debug2', version: '1.19.0' }
 ];
 
 const excludedExtensions = [
@@ -68,7 +68,7 @@ const vscodeResources = [
 	'out-build/bootstrap-amd.js',
 	'out-build/paths.js',
 	'out-build/vs/**/*.{svg,png,cur,html}',
-	'out-build/vs/base/node/startupTimers.js',
+	'out-build/vs/base/common/performance.js',
 	'out-build/vs/base/node/{stdForkStart.js,terminateProcess.sh}',
 	'out-build/vs/base/browser/ui/octiconLabel/octicons/**',
 	'out-build/vs/workbench/browser/media/*-theme.css',
@@ -138,6 +138,7 @@ const config = {
 		role: 'Editor',
 		ostypes: ["TEXT", "utxt", "TUTX", "****"],
 		extensions: ["ascx", "asp", "aspx", "bash", "bash_login", "bash_logout", "bash_profile", "bashrc", "bat", "bowerrc", "c", "cc", "clj", "cljs", "cljx", "clojure", "cmd", "code-workspace", "coffee", "config", "cpp", "cs", "cshtml", "csproj", "css", "csx", "ctp", "cxx", "dockerfile", "dot", "dtd", "editorconfig", "edn", "eyaml", "eyml", "fs", "fsi", "fsscript", "fsx", "gemspec", "gitattributes", "gitconfig", "gitignore", "go", "h", "handlebars", "hbs", "hh", "hpp", "htm", "html", "hxx", "ini", "jade", "jav", "java", "js", "jscsrc", "jshintrc", "jshtm", "json", "jsp", "less", "lua", "m", "makefile", "markdown", "md", "mdoc", "mdown", "mdtext", "mdtxt", "mdwn", "mkd", "mkdn", "ml", "mli", "php", "phtml", "pl", "pl6", "pm", "pm6", "pod", "pp", "profile", "properties", "ps1", "psd1", "psgi", "psm1", "py", "r", "rb", "rhistory", "rprofile", "rs", "rt", "scss", "sh", "shtml", "sql", "svg", "svgz", "t", "ts", "txt", "vb", "wxi", "wxl", "wxs", "xaml", "xcodeproj", "xcworkspace", "xml", "yaml", "yml", "zlogin", "zlogout", "zprofile", "zsh", "zshenv", "zshrc"],
+		utis: ['public.source-code'],
 		iconFile: 'resources/darwin/code_file.icns'
 	}],
 	darwinBundleURLTypes: [{
@@ -209,7 +210,6 @@ function computeChecksum(filename) {
 	return hash;
 }
 
-const settingsSearchBuildId = getBuildNumber();
 function packageTask(platform, arch, opts) {
 	opts = opts || {};
 
@@ -274,6 +274,7 @@ function packageTask(platform, arch, opts) {
 		const packageJsonStream = gulp.src(['package.json'], { base: '.' })
 			.pipe(json({ name, version }));
 
+		const settingsSearchBuildId = getBuildNumber();
 		const date = new Date().toISOString();
 		const productJsonStream = gulp.src(['product.json'], { base: '.' })
 			.pipe(json({ commit, date, checksums, settingsSearchBuildId }));
@@ -451,7 +452,7 @@ gulp.task('upload-vscode-sourcemaps', ['minify-vscode'], () => {
 const allConfigDetailsPath = path.join(os.tmpdir(), 'configuration.json');
 gulp.task('upload-vscode-configuration', ['generate-vscode-configuration'], () => {
 	const branch = process.env.BUILD_SOURCEBRANCH;
-	if (!branch.endsWith('/master') && !branch.indexOf('/release/') >= 0) {
+	if (!branch.endsWith('/master') && !branch.startsWith('release/')) {
 		console.log(`Only runs on master and release branches, not ${branch}`);
 		return;
 	}
@@ -461,6 +462,7 @@ gulp.task('upload-vscode-configuration', ['generate-vscode-configuration'], () =
 		return;
 	}
 
+	const settingsSearchBuildId = getBuildNumber();
 	if (!settingsSearchBuildId) {
 		console.error('Failed to compute build number');
 		return;
@@ -499,7 +501,7 @@ function getBuildNumber() {
 function getPreviousVersion(versionStr) {
 	function tagExists(tagName) {
 		try {
-			cp.execSync(`git rev-parse ${tagName}`);
+			cp.execSync(`git rev-parse ${tagName}`, { stdio: 'ignore' });
 			return true;
 		} catch (e) {
 			return false;

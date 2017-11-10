@@ -13,7 +13,7 @@ import { CommandsRegistry, ICommandService, ICommandHandler } from 'vs/platform/
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { ContextKeyExpr, IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { IActionDescriptor, IModel, IModelChangedEvent } from 'vs/editor/common/editorCommon';
-import { ICodeEditorService } from 'vs/editor/common/services/codeEditorService';
+import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import { IEditorWorkerService } from 'vs/editor/common/services/editorWorkerService';
 import { StandaloneKeybindingService } from 'vs/editor/standalone/browser/simpleServices';
 import { IEditorContextViewService } from 'vs/editor/standalone/browser/standaloneServices';
@@ -306,7 +306,6 @@ export class StandaloneEditor extends StandaloneCodeEditor implements IStandalon
 export class StandaloneDiffEditor extends DiffEditorWidget implements IStandaloneDiffEditor {
 
 	private _contextViewService: IEditorContextViewService;
-	private _standaloneKeybindingService: StandaloneKeybindingService;
 
 	constructor(
 		domElement: HTMLElement,
@@ -327,10 +326,6 @@ export class StandaloneDiffEditor extends DiffEditorWidget implements IStandalon
 		}
 
 		super(domElement, options, editorWorkerService, contextKeyService, instantiationService, codeEditorService, themeService, messageService);
-
-		if (keybindingService instanceof StandaloneKeybindingService) {
-			this._standaloneKeybindingService = keybindingService;
-		}
 
 		this._contextViewService = <IEditorContextViewService>contextViewService;
 

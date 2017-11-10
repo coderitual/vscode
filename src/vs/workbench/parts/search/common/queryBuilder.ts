@@ -46,7 +46,7 @@ export class QueryBuilder {
 		let excludePattern = this.parseExcludePattern(options.excludePattern);
 
 		// Build folderQueries from searchPaths, if given, otherwise folderResources
-		let folderQueries = folderResources && folderResources.map(uri => this.getFolderQueryForRoot(uri, options));
+		let folderQueries = folderResources && folderResources.map(uri => this.getFolderQueryForRoot(uri, type === QueryType.File, options));
 		if (searchPaths && searchPaths.length) {
 			const allRootExcludes = folderQueries && this.mergeExcludesFromFolderQueries(folderQueries);
 			folderQueries = searchPaths.map(searchPath => this.getFolderQueryForSearchPath(searchPath));
@@ -54,6 +54,12 @@ export class QueryBuilder {
 				excludePattern = objects.mixin(excludePattern || Object.create(null), allRootExcludes);
 			}
 		}
+
+		// TODO@rob - see #37998
+		const useIgnoreFiles = !folderResources || folderResources.every(folder => {
+			const folderConfig = this.configurationService.getConfiguration<ISearchConfiguration>({ resource: folder });
+			return folderConfig.search.useIgnoreFiles;
+		});
 
 		const useRipgrep = !folderResources || folderResources.every(folder => {
 			const folderConfig = this.configurationService.getConfiguration<ISearchConfiguration>({ resource: folder });
@@ -75,7 +81,7 @@ export class QueryBuilder {
 			cacheKey: options.cacheKey,
 			contentPattern: contentPattern,
 			useRipgrep,
-			disregardIgnoreFiles: options.disregardIgnoreFiles,
+			disregardIgnoreFiles: options.disregardIgnoreFiles || !useIgnoreFiles,
 			disregardExcludeSettings: options.disregardExcludeSettings,
 			ignoreSymlinks
 		};
@@ -255,12 +261,13 @@ export class QueryBuilder {
 		};
 	}
 
-	private getFolderQueryForRoot(folder: uri, options?: IQueryOptions): IFolderQuery {
+	private getFolderQueryForRoot(folder: uri, perFolderUseIgnoreFiles: boolean, options?: IQueryOptions): IFolderQuery {
 		const folderConfig = this.configurationService.getConfiguration<ISearchConfiguration>({ resource: folder });
 		return <IFolderQuery>{
 			folder,
 			excludePattern: this.getExcludesForFolder(folderConfig, options),
-			fileEncoding: folderConfig.files && folderConfig.files.encoding
+			fileEncoding: folderConfig.files && folderConfig.files.encoding,
+			disregardIgnoreFiles: perFolderUseIgnoreFiles ? !folderConfig.search.useIgnoreFiles : undefined
 		};
 	}
 }

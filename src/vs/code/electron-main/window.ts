@@ -26,6 +26,7 @@ import { ICodeWindow } from 'vs/platform/windows/electron-main/windows';
 import { IWorkspaceIdentifier, IWorkspacesMainService } from 'vs/platform/workspaces/common/workspaces';
 import { IBackupMainService } from 'vs/platform/backup/common/backup';
 import { ICommandAction } from 'vs/platform/actions/common/actions';
+import { mark, getEntries } from 'vs/base/common/performance';
 
 export interface IWindowState {
 	width?: number;
@@ -188,6 +189,23 @@ export class CodeWindow implements ICodeWindow {
 		// Create the browser window.
 		this._win = new BrowserWindow(options);
 		this._id = this._win.id;
+
+		// TODO@Ben Bug in Electron (https://github.com/electron/electron/issues/10862). On multi-monitor setups,
+		// it can happen that the position we set to the window is not the correct one on the display.
+		// To workaround, we ask the window for its position and set it again if not matching.
+		// This only applies if the window is not fullscreen or maximized and multiple monitors are used.
+		if (isWindows && !isFullscreenOrMaximized) {
+			try {
+				if (screen.getAllDisplays().length > 1) {
+					const [x, y] = this._win.getPosition();
+					if (x !== this.windowState.x || y !== this.windowState.y) {
+						this._win.setPosition(this.windowState.x, this.windowState.y, false);
+					}
+				}
+			} catch (err) {
+				this.logService.log(`Unexpected error fixing window position on windows with multiple windows: ${err}\n${err.stack}`);
+			}
+		}
 
 		if (useCustomTitleStyle) {
 			this._win.setSheetOffset(22); // offset dialogs by the height of the custom title bar if we have any
@@ -440,7 +458,7 @@ export class CodeWindow implements ICodeWindow {
 				this._win.removeAllListeners('swipe');
 			}
 		}
-	};
+	}
 
 	private registerNavigationListenerOn(command: 'swipe' | 'app-command', back: 'left' | 'browser-backward', forward: 'right' | 'browser-forward', acrossEditors: boolean) {
 		this._win.on(command as 'swipe' /* | 'app-command' */, (e: Electron.Event, cmd: string) => {
@@ -490,6 +508,7 @@ export class CodeWindow implements ICodeWindow {
 		}
 
 		// Load URL
+		mark('main:loadWindow');
 		this._win.loadURL(this.getUrl(config));
 
 		// Make window visible if it did not open in N seconds because this indicates an error
@@ -561,6 +580,7 @@ export class CodeWindow implements ICodeWindow {
 		windowConfiguration.backgroundColor = this.getBackgroundColor();
 
 		// Perf Counters
+		windowConfiguration.perfEntries = getEntries();
 		windowConfiguration.perfStartTime = global.perfStartTime;
 		windowConfiguration.perfAppReady = global.perfAppReady;
 		windowConfiguration.perfWindowLoadTime = Date.now();
@@ -603,6 +623,9 @@ export class CodeWindow implements ICodeWindow {
 	}
 
 	public serializeWindowState(): IWindowState {
+		if (!this._win) {
+			return defaultWindowState();
+		}
 
 		// fullscreen gets special treatment
 		if (this._win.isFullScreen()) {
@@ -810,7 +833,7 @@ export class CodeWindow implements ICodeWindow {
 
 				if (notify) {
 					this.send('vscode:showInfoMessage', nls.localize('hiddenMenuBar', "You can still access the menu bar by pressing the **Alt** key."));
-				};
+				}
 				break;
 
 			case ('hidden'):
@@ -824,7 +847,7 @@ export class CodeWindow implements ICodeWindow {
 					this._win.setAutoHideMenuBar(false);
 				});
 				break;
-		};
+		}
 	}
 
 	public onWindowTitleDoubleClick(): void {

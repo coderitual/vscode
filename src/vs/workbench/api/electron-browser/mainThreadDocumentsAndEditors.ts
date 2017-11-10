@@ -7,7 +7,7 @@
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { IModel, ICommonCodeEditor, isCommonCodeEditor, isCommonDiffEditor } from 'vs/editor/common/editorCommon';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
-import { ICodeEditorService } from 'vs/editor/common/services/codeEditorService';
+import { ICodeEditorService } from 'vs/editor/browser/services/codeEditorService';
 import Event, { Emitter } from 'vs/base/common/event';
 import { ExtHostContext, ExtHostDocumentsAndEditorsShape, IModelAddedData, ITextEditorAddData, IDocumentsAndEditorsDelta, IExtHostContext, MainContext } from '../node/extHost.protocol';
 import { MainThreadTextEditor } from './mainThreadEditor';
@@ -64,7 +64,7 @@ namespace delta {
 			}
 		});
 		return { removed, added };
-	};
+	}
 
 	export function ofMaps<K, V>(before: Map<K, V>, after: Map<K, V>): { removed: V[], added: V[] } {
 		const removed: V[] = [];
@@ -80,7 +80,7 @@ namespace delta {
 			}
 		});
 		return { removed, added };
-	};
+	}
 }
 
 class EditorSnapshot {

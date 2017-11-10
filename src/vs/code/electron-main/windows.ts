@@ -143,7 +143,7 @@ export class WindowsManager implements IWindowsMainService {
 		@IEnvironmentService private environmentService: IEnvironmentService,
 		@ILifecycleService private lifecycleService: ILifecycleService,
 		@IBackupMainService private backupService: IBackupMainService,
-		@ITelemetryService private telemetryService: ITelemetryService,
+		@ITelemetryService telemetryService: ITelemetryService,
 		@IConfigurationService private configurationService: IConfigurationService,
 		@IHistoryMainService private historyService: IHistoryMainService,
 		@IWorkspacesMainService private workspacesService: IWorkspacesMainService,
@@ -152,7 +152,7 @@ export class WindowsManager implements IWindowsMainService {
 		this.windowsState = this.storageService.getItem<IWindowsState>(WindowsManager.windowsStateStorageKey) || { openedWindows: [] };
 
 		this.fileDialog = new FileDialog(environmentService, telemetryService, storageService, this);
-		this.workspacesManager = new WorkspacesManager(workspacesService, lifecycleService, backupService, environmentService, this);
+		this.workspacesManager = new WorkspacesManager(workspacesService, backupService, environmentService, this);
 
 		this.migrateLegacyWindowState();
 	}
@@ -1456,7 +1456,7 @@ export class WindowsManager implements IWindowsMainService {
 			dialog.showMessageBox(window.win, {
 				title: product.nameLong,
 				type: 'warning',
-				buttons: [localize('reopen', "Reopen"), localize('wait', "Keep Waiting"), localize('close', "Close")],
+				buttons: [mnemonicButtonLabel(localize({ key: 'reopen', comment: ['&& denotes a mnemonic'] }, "&&Reopen")), mnemonicButtonLabel(localize({ key: 'wait', comment: ['&& denotes a mnemonic'] }, "&&Keep Waiting")), mnemonicButtonLabel(localize({ key: 'close', comment: ['&& denotes a mnemonic'] }, "&&Close"))],
 				message: localize('appStalled', "The window is no longer responding"),
 				detail: localize('appStalledDetail', "You can reopen or close the window or keep waiting."),
 				noLink: true
@@ -1479,7 +1479,7 @@ export class WindowsManager implements IWindowsMainService {
 			dialog.showMessageBox(window.win, {
 				title: product.nameLong,
 				type: 'warning',
-				buttons: [localize('reopen', "Reopen"), localize('close', "Close")],
+				buttons: [mnemonicButtonLabel(localize({ key: 'reopen', comment: ['&& denotes a mnemonic'] }, "&&Reopen")), mnemonicButtonLabel(localize({ key: 'close', comment: ['&& denotes a mnemonic'] }, "&&Close"))],
 				message: localize('appCrashed', "The window has crashed"),
 				detail: localize('appCrashedDetail', "We are sorry for the inconvenience! You can reopen the window to continue where you left off."),
 				noLink: true
@@ -1672,7 +1672,6 @@ class WorkspacesManager {
 
 	constructor(
 		private workspacesService: IWorkspacesMainService,
-		private lifecycleService: ILifecycleService,
 		private backupService: IBackupMainService,
 		private environmentService: IEnvironmentService,
 		private windowsMainService: IWindowsMainService

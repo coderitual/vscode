@@ -16,6 +16,7 @@ import { ICommonCodeEditor } from 'vs/editor/common/editorCommon';
 import { IWorkspaceFolder } from 'vs/platform/workspace/common/workspace';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { toResource } from 'vs/workbench/common/editor';
+import { DiffEditorInput } from 'vs/workbench/common/editor/diffEditorInput';
 
 export class ConfigurationResolverService implements IConfigurationResolverService {
 	_serviceBrand: any;
@@ -103,10 +104,14 @@ export class ConfigurationResolverService implements IConfigurationResolverServi
 
 	private getFilePath(): string {
 		let input = this.editorService.getActiveEditorInput();
+		if (input instanceof DiffEditorInput) {
+			input = input.modifiedInput;
+		}
 		if (!input) {
 			return '';
 		}
-		let fileResource = toResource(input, { filter: 'file' });
+
+		const fileResource = toResource(input, { filter: 'file' });
 		if (!fileResource) {
 			return '';
 		}
@@ -133,7 +138,7 @@ export class ConfigurationResolverService implements IConfigurationResolverServi
 	}
 
 	public resolveAny<T>(root: IWorkspaceFolder, value: T): T;
-	public resolveAny<T>(root: IWorkspaceFolder, value: any): any {
+	public resolveAny(root: IWorkspaceFolder, value: any): any {
 		try {
 			this._lastWorkspaceFolder = root;
 			if (types.isString(value)) {
@@ -166,7 +171,7 @@ export class ConfigurationResolverService implements IConfigurationResolverServi
 
 	private resolveConfigVariable(root: IWorkspaceFolder, value: string, originalValue: string): string {
 		const replacer = (match: string, name: string) => {
-			let config = this.configurationService.getConfiguration<any>();
+			let config = this.configurationService.getConfiguration<any>({ resource: root.uri });
 			let newValue: any;
 			try {
 				const keys: string[] = name.split('.');
@@ -205,7 +210,7 @@ export class ConfigurationResolverService implements IConfigurationResolverServi
 	}
 
 	private resolveAnyLiteral<T>(root: IWorkspaceFolder, values: T): T;
-	private resolveAnyLiteral<T>(root: IWorkspaceFolder, values: any): any {
+	private resolveAnyLiteral(root: IWorkspaceFolder, values: any): any {
 		let result: IStringDictionary<string | IStringDictionary<string> | string[]> = Object.create(null);
 		Object.keys(values).forEach(key => {
 			let value = values[key];

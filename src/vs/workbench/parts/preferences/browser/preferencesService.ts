@@ -31,7 +31,7 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { DefaultPreferencesEditorInput, PreferencesEditorInput } from 'vs/workbench/parts/preferences/browser/preferencesEditor';
 import { KeybindingsEditorInput } from 'vs/workbench/parts/preferences/browser/keybindingsEditor';
 import { ITextModelService } from 'vs/editor/common/services/resolverService';
-import { getCodeEditor } from 'vs/editor/common/services/codeEditorService';
+import { getCodeEditor } from 'vs/editor/browser/services/codeEditorService';
 import { EditOperation } from 'vs/editor/common/core/editOperation';
 import { Position, IPosition } from 'vs/editor/common/core/position';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
@@ -63,9 +63,11 @@ export class PreferencesService extends Disposable implements IPreferencesServic
 		@IFileService private fileService: IFileService,
 		@IWorkspaceConfigurationService private configurationService: IWorkspaceConfigurationService,
 		@IMessageService private messageService: IMessageService,
+		// @ts-ignore unused injected service
 		@IChoiceService private choiceService: IChoiceService,
 		@IWorkspaceContextService private contextService: IWorkspaceContextService,
 		@IInstantiationService private instantiationService: IInstantiationService,
+		// @ts-ignore unused injected service
 		@IStorageService private storageService: IStorageService,
 		@IEnvironmentService private environmentService: IEnvironmentService,
 		@ITelemetryService private telemetryService: ITelemetryService,

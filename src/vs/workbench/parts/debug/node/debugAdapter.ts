@@ -15,14 +15,12 @@ import { IJSONSchema, IJSONSchemaSnippet } from 'vs/base/common/jsonSchema';
 import { IWorkspaceFolder } from 'vs/platform/workspace/common/workspace';
 import { IConfig, IRawAdapter, IAdapterExecutable, INTERNAL_CONSOLE_OPTIONS_SCHEMA } from 'vs/workbench/parts/debug/common/debug';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
-import { IConfigurationResolverService } from 'vs/workbench/services/configurationResolver/common/configurationResolver';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 
 export class Adapter {
 
 	constructor(private rawAdapter: IRawAdapter, public extensionDescription: IExtensionDescription,
-		@IConfigurationResolverService private configurationResolverService: IConfigurationResolverService,
 		@IConfigurationService private configurationService: IConfigurationService,
 		@ICommandService private commandService: ICommandService
 	) {
@@ -35,7 +33,7 @@ export class Adapter {
 
 	public getAdapterExecutable(root: IWorkspaceFolder, verifyAgainstFS = true): TPromise<IAdapterExecutable> {
 
-		if (this.rawAdapter.adapterExecutableCommand) {
+		if (this.rawAdapter.adapterExecutableCommand && root) {
 			return this.commandService.executeCommand<IAdapterExecutable>(this.rawAdapter.adapterExecutableCommand, root.uri.toString()).then(ad => {
 				return this.verifyAdapterDetails(ad, verifyAgainstFS);
 			});
@@ -165,7 +163,7 @@ export class Adapter {
 		}
 
 		return TPromise.as(content);
-	};
+	}
 
 	public getSchemaAttributes(): IJSONSchema[] {
 		if (!this.rawAdapter.configurationAttributes) {

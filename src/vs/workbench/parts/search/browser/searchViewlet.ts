@@ -48,7 +48,7 @@ import { KeyCode } from 'vs/base/common/keyCodes';
 import { PatternInputWidget, ExcludePatternInputWidget } from 'vs/workbench/parts/search/browser/patternInputWidget';
 import { SearchRenderer, SearchDataSource, SearchSorter, SearchAccessibilityProvider, SearchFilter } from 'vs/workbench/parts/search/browser/searchResultsView';
 import { SearchWidget, ISearchWidgetOptions } from 'vs/workbench/parts/search/browser/searchWidget';
-import { RefreshAction, CollapseAllAction, ClearSearchResultsAction } from 'vs/workbench/parts/search/browser/searchActions';
+import { RefreshAction, CollapseDeepestExpandedLevelAction, ClearSearchResultsAction } from 'vs/workbench/parts/search/browser/searchActions';
 import { IReplaceService } from 'vs/workbench/parts/search/common/replace';
 import Severity from 'vs/base/common/severity';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
@@ -71,9 +71,11 @@ export class SearchViewlet extends Viewlet {
 
 	private isDisposed: boolean;
 
+	// @ts-ignore unused property
 	private loading: boolean;
 	private queryBuilder: QueryBuilder;
 	private viewModel: SearchModel;
+	// @ts-ignore unused property
 	private callOnModelChange: lifecycle.IDisposable[];
 
 	private viewletVisible: IContextKey<boolean>;
@@ -88,6 +90,7 @@ export class SearchViewlet extends Viewlet {
 	private actionRegistry: { [key: string]: Action; };
 	private tree: ITree;
 	private viewletSettings: any;
+	// @ts-ignore unused property
 	private domNode: Builder;
 	private messages: Builder;
 	private searchWidgetsContainer: Builder;
@@ -102,6 +105,7 @@ export class SearchViewlet extends Viewlet {
 
 	private selectCurrentMatchEmitter: Emitter<string>;
 	private delayedRefresh: Delayer<void>;
+	private changedWhileHidden: boolean;
 
 	private searchWithoutFolderMessageBuilder: Builder;
 
@@ -180,10 +184,8 @@ export class SearchViewlet extends Viewlet {
 		const patternIncludes = this.viewletSettings['query.folderIncludes'] || '';
 		const patternIncludesHistory = this.viewletSettings['query.folderIncludesHistory'] || [];
 		const queryDetailsExpanded = this.viewletSettings['query.queryDetailsExpanded'] || '';
-		const useIgnoreFiles = typeof this.viewletSettings['query.useIgnoreFiles'] === 'boolean' ?
-			this.viewletSettings['query.useIgnoreFiles'] :
-			this.configurationService.getConfiguration<ISearchConfiguration>().search.useIgnoreFilesByDefault;
-		const useExcludeSettings = true;
+		const useExcludesAndIgnoreFiles = typeof this.viewletSettings['query.useExcludesAndIgnoreFiles'] === 'boolean' ?
+			this.viewletSettings['query.useExcludesAndIgnoreFiles'] : true;
 
 		this.queryDetails = this.searchWidgetsContainer.div({ 'class': ['query-details'] }, (builder) => {
 			builder.div({ 'class': 'more', 'tabindex': 0, 'role': 'button', 'title': nls.localize('moreSearch', "Toggle Search Details") })
@@ -231,8 +233,7 @@ export class SearchViewlet extends Viewlet {
 				});
 
 				this.inputPatternExcludes.setValue(patternExclusions);
-				this.inputPatternExcludes.setUseIgnoreFiles(useIgnoreFiles);
-				this.inputPatternExcludes.setUseExcludeSettings(useExcludeSettings);
+				this.inputPatternExcludes.setUseExcludesAndIgnoreFiles(useExcludesAndIgnoreFiles);
 				this.inputPatternExcludes.setHistory(patternExclusionsHistory);
 
 				this.inputPatternExcludes
@@ -254,13 +255,13 @@ export class SearchViewlet extends Viewlet {
 
 		this.createSearchResultsView(builder);
 
-		this.actionRegistry = <any>{};
-		let actions: Action[] = [new CollapseAllAction(this), new RefreshAction(this), new ClearSearchResultsAction(this)];
+		this.actionRegistry = {};
+		let actions: Action[] = [new CollapseDeepestExpandedLevelAction(this), new RefreshAction(this), new ClearSearchResultsAction(this)];
 		actions.forEach((action) => {
 			this.actionRegistry[action.id] = action;
 		});
 
-		if (filePatterns !== '' || patternExclusions !== '' || patternIncludes !== '' || queryDetailsExpanded !== '') {
+		if (filePatterns !== '' || patternExclusions !== '' || patternIncludes !== '' || queryDetailsExpanded !== '' || useExcludesAndIgnoreFiles) {
 			this.toggleQueryDetails(true, true, true);
 		}
 
@@ -351,6 +352,15 @@ export class SearchViewlet extends Viewlet {
 	}
 
 	private onSearchResultsChanged(event?: IChangeEvent): TPromise<any> {
+		if (this.isVisible()) {
+			return this.refreshAndUpdateCount(event);
+		} else {
+			this.changedWhileHidden = true;
+			return TPromise.wrap(null);
+		}
+	}
+
+	private refreshAndUpdateCount(event?: IChangeEvent): TPromise<void> {
 		return this.refreshTree(event).then(() => {
 			this.searchWidget.setReplaceAllActionState(!this.viewModel.searchResult.isEmpty());
 			this.updateSearchResultCount();
@@ -384,7 +394,7 @@ export class SearchViewlet extends Viewlet {
 		let confirmation: IConfirmation = {
 			title: nls.localize('replaceAll.confirmation.title', "Replace All"),
 			message: this.buildReplaceAllConfirmationMessage(occurrences, fileCount, replaceValue),
-			primaryButton: nls.localize('replaceAll.confirm.button', "Replace"),
+			primaryButton: nls.localize('replaceAll.confirm.button', "&&Replace"),
 			type: 'question'
 		};
 
@@ -629,6 +639,12 @@ export class SearchViewlet extends Viewlet {
 		let promise: TPromise<void>;
 		this.viewletVisible.set(visible);
 		if (visible) {
+			if (this.changedWhileHidden) {
+				// Render if results changed while viewlet was hidden - #37818
+				this.refreshAndUpdateCount();
+				this.changedWhileHidden = false;
+			}
+
 			promise = super.setVisible(visible);
 			this.tree.onVisible();
 		} else {
@@ -662,6 +678,7 @@ export class SearchViewlet extends Viewlet {
 		const selectedText = this.getSearchTextFromEditor();
 		if (selectedText) {
 			this.searchWidget.searchInput.setValue(selectedText);
+			this.searchWidget.focus();
 		}
 	}
 
@@ -933,8 +950,7 @@ export class SearchViewlet extends Viewlet {
 		const contentPattern = this.searchWidget.searchInput.getValue();
 		const excludePatternText = this.inputPatternExcludes.getValue().trim();
 		const includePatternText = this.inputPatternIncludes.getValue().trim();
-		const useIgnoreFiles = this.inputPatternExcludes.useIgnoreFiles();
-		const useExcludeSettings = this.inputPatternExcludes.useExcludeSettings();
+		const useExcludesAndIgnoreFiles = this.inputPatternExcludes.useExcludesAndIgnoreFiles();
 
 		if (!rerunQuery) {
 			return;
@@ -972,8 +988,8 @@ export class SearchViewlet extends Viewlet {
 		const options: IQueryOptions = {
 			extraFileResources: getOutOfWorkspaceEditorResources(this.editorGroupService, this.contextService),
 			maxResults: SearchViewlet.MAX_TEXT_RESULTS,
-			disregardIgnoreFiles: !useIgnoreFiles,
-			disregardExcludeSettings: !useExcludeSettings,
+			disregardIgnoreFiles: !useExcludesAndIgnoreFiles,
+			disregardExcludeSettings: !useExcludesAndIgnoreFiles,
 			excludePattern,
 			includePattern
 		};
@@ -1433,7 +1449,7 @@ export class SearchViewlet extends Viewlet {
 		const contentPattern = this.searchWidget.searchInput.getValue();
 		const patternExcludes = this.inputPatternExcludes.getValue().trim();
 		const patternIncludes = this.inputPatternIncludes.getValue().trim();
-		const useIgnoreFiles = this.inputPatternExcludes.useIgnoreFiles();
+		const useExcludesAndIgnoreFiles = this.inputPatternExcludes.useExcludesAndIgnoreFiles();
 		const searchHistory = this.searchWidget.getHistory();
 		const patternExcludesHistory = this.inputPatternExcludes.getHistory();
 		const patternIncludesHistory = this.inputPatternIncludes.getHistory();
@@ -1448,7 +1464,7 @@ export class SearchViewlet extends Viewlet {
 		this.viewletSettings['query.folderIncludes'] = patternIncludes;
 		this.viewletSettings['query.folderExclusionsHistory'] = patternExcludesHistory;
 		this.viewletSettings['query.folderIncludesHistory'] = patternIncludesHistory;
-		this.viewletSettings['query.useIgnoreFiles'] = useIgnoreFiles;
+		this.viewletSettings['query.useExcludesAndIgnoreFiles'] = useExcludesAndIgnoreFiles;
 
 		super.shutdown();
 	}

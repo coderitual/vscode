@@ -15,7 +15,6 @@ import { IDisposable } from 'vs/base/common/lifecycle';
 import { Position, IPosition } from 'vs/editor/common/core/position';
 import { Range, IRange } from 'vs/editor/common/core/range';
 import { Selection, ISelection } from 'vs/editor/common/core/selection';
-import { IndentRanges } from 'vs/editor/common/model/indentRanges';
 import { ITextSource } from 'vs/editor/common/model/textSource';
 import {
 	ModelRawContentChangedEvent, IModelContentChangedEvent, IModelDecorationsChangedEvent,
@@ -25,6 +24,7 @@ import * as editorOptions from 'vs/editor/common/config/editorOptions';
 import { ICursorPositionChangedEvent, ICursorSelectionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { ICursors, CursorConfiguration } from 'vs/editor/common/controller/cursorCommon';
 import { ThemeColor } from 'vs/platform/theme/common/themeService';
+import { IEditorWhitespace } from 'vs/editor/common/viewLayout/whitespaceComputer';
 
 /**
  * Vertical Lane in the overview ruler of the editor.
@@ -894,11 +894,6 @@ export interface ITokenizedModel extends ITextModel {
 	 * @internal
 	 */
 	matchBracket(position: IPosition): [Range, Range];
-
-	/**
-	 * @internal
-	 */
-	getIndentRanges(): IndentRanges;
 
 	/**
 	 * @internal
@@ -1973,6 +1968,33 @@ export interface ICommonCodeEditor extends IEditor {
 	 * Get the layout info for the editor.
 	 */
 	getLayoutInfo(): editorOptions.EditorLayoutInfo;
+
+	/**
+	 * Returns the range that is currently centered in the view port.
+	 */
+	getCenteredRangeInViewport(): Range;
+
+	/**
+	 * Get the view zones.
+	 * @internal
+	 */
+	getWhitespaces(): IEditorWhitespace[];
+
+	/**
+	 * Get the vertical position (top offset) for the line w.r.t. to the first line.
+	 */
+	getTopForLineNumber(lineNumber: number): number;
+
+	/**
+	 * Get the vertical position (top offset) for the position w.r.t. to the first line.
+	 */
+	getTopForPosition(lineNumber: number, column: number): number;
+
+	/**
+	 * Set the model ranges that will be hidden in the view.
+	 * @internal
+	 */
+	setHiddenAreas(ranges: IRange[]): void;
 
 	/**
 	 * @internal

@@ -85,7 +85,6 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
 		@IEditorGroupService private editorInputService: IEditorGroupService,
-		@IExtensionsWorkbenchService private extensionsWorkbenchService: IExtensionsWorkbenchService,
 		@IExtensionManagementService private extensionManagementService: IExtensionManagementService,
 		@IMessageService private messageService: IMessageService,
 		@IViewletService private viewletService: IViewletService,
@@ -106,7 +105,7 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 		this.searchInstalledExtensionsContextKey = SearchInstalledExtensionsContext.bindTo(contextKeyService);
 		this.recommendedExtensionsContextKey = RecommendedExtensionsContext.bindTo(contextKeyService);
 
-		this.disposables.push(viewletService.onDidViewletOpen(this.onViewletOpen, this, this.disposables));
+		this.disposables.push(this.viewletService.onDidViewletOpen(this.onViewletOpen, this, this.disposables));
 
 		this.configurationService.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration(AutoUpdateConfigurationKey)) {
@@ -145,7 +144,7 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 			location: ViewLocation.Extensions,
 			ctor: InstalledExtensionsView,
 			when: ContextKeyExpr.and(ContextKeyExpr.not('searchExtensions')),
-			size: 50
+			size: 200
 		};
 	}
 
@@ -162,12 +161,12 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 
 	private createDefaultRecommendedExtensionsListViewDescriptor(): IViewDescriptor {
 		return {
-			id: 'extensions.defaultRecommendedList',
+			id: 'extensions.recommendedList',
 			name: localize('recommendedExtensions', "Recommended"),
 			location: ViewLocation.Extensions,
 			ctor: RecommendedExtensionsView,
 			when: ContextKeyExpr.and(ContextKeyExpr.not('searchExtensions')),
-			size: 50,
+			size: 600,
 			canToggleVisibility: true
 		};
 	}
@@ -179,7 +178,7 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 			location: ViewLocation.Extensions,
 			ctor: RecommendedExtensionsView,
 			when: ContextKeyExpr.and(ContextKeyExpr.has('recommendedExtensions')),
-			size: 50,
+			size: 600,
 			canToggleVisibility: true,
 			order: 2
 		};
@@ -192,7 +191,7 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 			location: ViewLocation.Extensions,
 			ctor: WorkspaceRecommendedExtensionsView,
 			when: ContextKeyExpr.and(ContextKeyExpr.has('recommendedExtensions'), ContextKeyExpr.has('nonEmptyWorkspace')),
-			size: 50,
+			size: 200,
 			canToggleVisibility: true,
 			order: 1
 		};

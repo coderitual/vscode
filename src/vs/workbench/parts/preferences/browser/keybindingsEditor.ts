@@ -41,6 +41,7 @@ import { KeyCode, ResolvedKeybinding } from 'vs/base/common/keyCodes';
 import { attachListStyler } from 'vs/platform/theme/common/styler';
 import { listHighlightForeground } from 'vs/platform/theme/common/colorRegistry';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { EditorExtensionsRegistry } from 'vs/editor/browser/editorExtensions';
 
 let $ = DOM.$;
 
@@ -49,6 +50,7 @@ export class KeybindingsEditorInput extends EditorInput {
 	public static ID: string = 'workbench.input.keybindings';
 	public readonly keybindingsModel: KeybindingsEditorModel;
 
+	// @ts-ignore unused injected service
 	constructor( @IInstantiationService private instantiationService: IInstantiationService) {
 		super();
 		this.keybindingsModel = instantiationService.createInstance(KeybindingsEditorModel, OS);
@@ -106,6 +108,7 @@ export class KeybindingsEditor extends BaseEditor implements IKeybindingsEditor 
 		@IKeybindingEditingService private keybindingEditingService: IKeybindingEditingService,
 		@IListService private listService: IListService,
 		@IContextKeyService private contextKeyService: IContextKeyService,
+		// @ts-ignore unused injected service
 		@IChoiceService private choiceService: IChoiceService,
 		@IMessageService private messageService: IMessageService,
 		@IClipboardService private clipboardService: IClipboardService,
@@ -348,7 +351,13 @@ export class KeybindingsEditor extends BaseEditor implements IKeybindingsEditor 
 		if (this.input) {
 			return this.input.resolve()
 				.then((keybindingsModel: KeybindingsEditorModel) => this.keybindingsEditorModel = keybindingsModel)
-				.then(() => this.keybindingsEditorModel.resolve())
+				.then(() => {
+					const editorActionsLabels: { [id: string]: string; } = EditorExtensionsRegistry.getEditorActions().reduce((editorActions, editorAction) => {
+						editorActions[editorAction.id] = editorAction.label;
+						return editorActions;
+					}, {});
+					return this.keybindingsEditorModel.resolve(editorActionsLabels);
+				})
 				.then(() => this.renderKeybindingsEntries(false));
 		}
 		return TPromise.as(null);

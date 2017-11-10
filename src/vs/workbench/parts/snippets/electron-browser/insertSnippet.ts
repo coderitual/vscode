@@ -7,13 +7,13 @@
 import * as nls from 'vs/nls';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { ICommonCodeEditor } from 'vs/editor/common/editorCommon';
-import { editorAction, ServicesAccessor, EditorAction } from 'vs/editor/common/editorCommonExtensions';
+import { registerEditorAction, ServicesAccessor, EditorAction } from 'vs/editor/browser/editorExtensions';
 import { IQuickOpenService, IPickOpenEntry } from 'vs/platform/quickOpen/common/quickOpen';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { LanguageId } from 'vs/editor/common/modes';
 import { ICommandService, CommandsRegistry } from 'vs/platform/commands/common/commands';
 import { ISnippetsService, Snippet } from 'vs/workbench/parts/snippets/electron-browser/snippets.contribution';
-import { SnippetController2 } from 'vs/editor/contrib/snippet/browser/snippetController2';
+import { SnippetController2 } from 'vs/editor/contrib/snippet/snippetController2';
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
 
 interface ISnippetPick extends IPickOpenEntry {
@@ -51,7 +51,6 @@ class Args {
 
 }
 
-@editorAction
 class InsertSnippetAction extends EditorAction {
 
 	constructor() {
@@ -140,6 +139,8 @@ class InsertSnippetAction extends EditorAction {
 		});
 	}
 }
+
+registerEditorAction(InsertSnippetAction);
 
 // compatibility command to make sure old keybinding are still working
 CommandsRegistry.registerCommand('editor.action.showSnippets', accessor => {
