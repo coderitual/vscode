@@ -475,7 +475,7 @@ class Launch implements ILaunch {
 	}
 
 	public getConfiguration(name: string): IConfig {
-		const config = this.configurationService.getValue<IGlobalConfig>('launch', { resource: this.workspace.uri });
+		const config = objects.deepClone(this.configurationService.getValue<IGlobalConfig>('launch', { resource: this.workspace.uri }));
 		if (!config || !config.configurations) {
 			return null;
 		}
@@ -484,7 +484,7 @@ class Launch implements ILaunch {
 	}
 
 	public resolveConfiguration(config: IConfig): TPromise<IConfig> {
-		const result = objects.clone(config) as IConfig;
+		const result = objects.deepClone(config) as IConfig;
 		// Set operating system specific properties #1873
 		const setOSProperties = (flag: boolean, osConfig: IEnvConfig) => {
 			if (flag && osConfig) {

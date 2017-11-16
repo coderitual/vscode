@@ -275,6 +275,7 @@ export class TerminalTaskSystem extends EventEmitter implements ITaskSystem {
 							this.idleTaskTerminals.set(key, terminal.id.toString(), Touch.First);
 							break;
 					}
+					watchingProblemMatcher.done();
 					watchingProblemMatcher.dispose();
 					registeredLinkMatchers.forEach(handle => terminal.deregisterLinkMatcher(handle));
 					toUnbind = dispose(toUnbind);
@@ -607,7 +608,7 @@ export class TerminalTaskSystem extends EventEmitter implements ITaskSystem {
 			if (!matcher.filePrefix) {
 				result.push(matcher);
 			} else {
-				let copy = Objects.clone(matcher);
+				let copy = Objects.deepClone(matcher);
 				copy.filePrefix = this.resolveVariable(task, copy.filePrefix);
 				result.push(copy);
 			}
@@ -668,21 +669,6 @@ export class TerminalTaskSystem extends EventEmitter implements ITaskSystem {
 		}
 		*/
 		return result;
-	}
-
-	private static doubleQuotes = /^[^"].* .*[^"]$/;
-	protected ensureDoubleQuotes(value: string) {
-		if (TerminalTaskSystem.doubleQuotes.test(value)) {
-			return {
-				value: '"' + value + '"',
-				quoted: true
-			};
-		} else {
-			return {
-				value: value,
-				quoted: value.length > 0 && value[0] === '"' && value[value.length - 1] === '"'
-			};
-		}
 	}
 
 	private static WellKnowCommands: IStringDictionary<boolean> = {

@@ -379,10 +379,6 @@ class ProblemReporter implements TaskConfig.IProblemReporter {
 	public get status(): ValidationStatus {
 		return this._validationStatus;
 	}
-
-	public clearOutput(): void {
-		this._outputChannel.clear();
-	}
 }
 
 interface WorkspaceTaskResult {
@@ -426,10 +422,6 @@ class TaskMap {
 		return result;
 	}
 
-	public has(workspaceFolder: IWorkspaceFolder): boolean {
-		return this._store.has(workspaceFolder.uri.toString());
-	}
-
 	public add(workspaceFolder: IWorkspaceFolder | string, ...task: Task[]): void {
 		let values = Types.isString(workspaceFolder) ? this._store.get(workspaceFolder) : this._store.get(workspaceFolder.uri.toString());
 		if (!values) {
@@ -461,7 +453,6 @@ class TaskService extends EventEmitter implements ITaskService {
 	public static TemplateTelemetryEventName: string = 'taskService.template';
 
 	public _serviceBrand: any;
-	public static SERVICE_ID: string = 'taskService';
 	public static OutputChannelId: string = 'tasks';
 	public static OutputChannelLabel: string = nls.localize('tasks', "Tasks");
 
@@ -798,14 +789,6 @@ class TaskService extends EventEmitter implements ITaskService {
 			this.handleError(error);
 			return TPromise.wrapError(error);
 		});
-	}
-
-	public rebuild(): TPromise<ITaskSummary> {
-		return TPromise.wrapError<ITaskSummary>(new Error('Not implemented'));
-	}
-
-	public clean(): TPromise<ITaskSummary> {
-		return TPromise.wrapError<ITaskSummary>(new Error('Not implemented'));
 	}
 
 	public runTest(): TPromise<ITaskSummary> {
@@ -1529,7 +1512,7 @@ class TaskService extends EventEmitter implements ITaskService {
 					if (!detectedConfig) {
 						return { workspaceFolder, config, hasErrors };
 					}
-					let result: TaskConfig.ExternalTaskRunnerConfiguration = Objects.clone(config);
+					let result: TaskConfig.ExternalTaskRunnerConfiguration = Objects.deepClone(config);
 					let configuredTasks: IStringDictionary<TaskConfig.CustomTask> = Object.create(null);
 					if (!result.tasks) {
 						if (detectedConfig.tasks) {
@@ -1601,7 +1584,7 @@ class TaskService extends EventEmitter implements ITaskService {
 
 	private getConfiguration(workspaceFolder: IWorkspaceFolder): { config: TaskConfig.ExternalTaskRunnerConfiguration; hasParseErrors: boolean } {
 		let result = this.contextService.getWorkbenchState() !== WorkbenchState.EMPTY
-			? this.configurationService.getValue<TaskConfig.ExternalTaskRunnerConfiguration>('tasks', { resource: workspaceFolder.uri })
+			? Objects.deepClone(this.configurationService.getValue<TaskConfig.ExternalTaskRunnerConfiguration>('tasks', { resource: workspaceFolder.uri }))
 			: undefined;
 		if (!result) {
 			return { config: undefined, hasParseErrors: false };
@@ -2172,6 +2155,8 @@ class TaskService extends EventEmitter implements ITaskService {
 				this.customize(task, undefined, true);
 			} else if (CustomTask.is(task)) {
 				this.openConfig(task);
+			} else if (ConfiguringTask.is(task)) {
+				// Do nothing.
 			}
 		};
 
@@ -2192,12 +2177,19 @@ class TaskService extends EventEmitter implements ITaskService {
 				let entries: EntryType[] = [];
 				if (this.contextService.getWorkbenchState() === WorkbenchState.FOLDER) {
 					let tasks = taskMap.all();
+					let needsCreateOrOpen: boolean = true;
 					if (tasks.length > 0) {
 						tasks = tasks.sort((a, b) => a._label.localeCompare(b._label));
-						entries = tasks.map(task => { return { label: task._label, task }; });
-					} else {
+						for (let task of tasks) {
+							entries.push({ label: task._label, task });
+							if (!ContributedTask.is(task)) {
+								needsCreateOrOpen = false;
+							}
+						}
+					}
+					if (needsCreateOrOpen) {
 						let label = stats[0] !== void 0 ? openLabel : createLabel;
-						entries.push({ label, folder: this.contextService.getWorkspace().folders[0] });
+						entries.push({ label, folder: this.contextService.getWorkspace().folders[0], separator: entries.length > 0 ? { border: true } : undefined });
 					}
 				} else {
 					let folders = this.contextService.getWorkspace().folders;
@@ -2383,8 +2375,6 @@ statusbarRegistry.registerStatusbarItem(new StatusbarItemDescriptor(TaskStatusBa
 // Output channel
 let outputChannelRegistry = <IOutputChannelRegistry>Registry.as(OutputExt.OutputChannels);
 outputChannelRegistry.registerChannel(TaskService.OutputChannelId, TaskService.OutputChannelLabel);
-
-// (<IWorkbenchContributionsRegistry>Registry.as(WorkbenchExtensions.Workbench)).registerWorkbenchContribution(TaskServiceParticipant);
 
 // tasks.json validation
 let schemaId = 'vscode://schemas/tasks';

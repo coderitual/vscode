@@ -198,10 +198,6 @@ export class ActivityActionItem extends BaseActionItem {
 		this.updateStyles();
 	}
 
-	public setBadge(badge: IBadge): void {
-		this.updateBadge(badge);
-	}
-
 	protected updateBadge(badge: IBadge): void {
 		this.$badgeContent.empty();
 		this.$badge.hide();
@@ -291,10 +287,6 @@ export class CompositeOverflowActivityAction extends ActivityAction {
 }
 
 export class CompositeOverflowActivityActionItem extends ActivityActionItem {
-	// @ts-ignore unused property
-	private name: string;
-	// @ts-ignore unused property
-	private cssClass: string;
 	private actions: Action[];
 
 	constructor(
@@ -304,15 +296,10 @@ export class CompositeOverflowActivityActionItem extends ActivityActionItem {
 		private getBadge: (compositeId: string) => IBadge,
 		private getCompositeOpenAction: (compositeId: string) => Action,
 		colors: ICompositeBarColors,
-		// @ts-ignore unused injected service
-		@IInstantiationService private instantiationService: IInstantiationService,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@IThemeService themeService: IThemeService
 	) {
 		super(action, { icon: true, colors }, themeService);
-
-		this.cssClass = action.class;
-		this.name = action.label;
 	}
 
 	public showMenu(): void {

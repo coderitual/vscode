@@ -12,7 +12,7 @@ import { RunOnceScheduler, Delayer } from 'vs/base/common/async';
 import { KeyCode, KeyMod, KeyChord } from 'vs/base/common/keyCodes';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { ScrollType, IModel } from 'vs/editor/common/editorCommon';
+import { ScrollType, IModel, IEditorContribution } from 'vs/editor/common/editorCommon';
 import { registerEditorAction, registerEditorContribution, ServicesAccessor, EditorAction, registerInstantiatedEditorAction } from 'vs/editor/browser/editorExtensions';
 import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import { FoldingModel, setCollapseStateAtLevel, CollapseMemento, setCollapseStateLevelsDown, setCollapseStateLevelsUp } from 'vs/editor/contrib/folding/foldingModel';
@@ -27,7 +27,7 @@ import { computeRanges as computeIndentRanges } from 'vs/editor/contrib/folding/
 
 export const ID = 'editor.contrib.folding';
 
-export class FoldingController {
+export class FoldingController implements IEditorContribution {
 
 	static MAX_FOLDING_REGIONS = 5000;
 
@@ -177,12 +177,14 @@ export class FoldingController {
 	}
 
 	private onModelContentChanged() {
-		this.foldingModelPromise = this.updateScheduler.trigger(() => {
-			if (this.foldingModel) { // null if editor has been disposed, or folding turned off
-				this.foldingModel.update(this.computeRanges(this.foldingModel.textModel));
-			}
-			return this.foldingModel;
-		});
+		if (this.updateScheduler) {
+			this.foldingModelPromise = this.updateScheduler.trigger(() => {
+				if (this.foldingModel) { // null if editor has been disposed, or folding turned off
+					this.foldingModel.update(this.computeRanges(this.foldingModel.textModel));
+				}
+				return this.foldingModel;
+			});
+		}
 	}
 
 	private onHiddenRangesChanges(hiddenRanges: IRange[]) {
@@ -227,10 +229,7 @@ export class FoldingController {
 		this.mouseDownInfo = null;
 
 		let range = e.target.range;
-		if (!range) {
-			return;
-		}
-		if (!e.event.leftButton) {
+		if (!this.hiddenRangeModel || !range || !e.event.leftButton) {
 			return;
 		}
 		let iconClicked = false;
@@ -258,7 +257,7 @@ export class FoldingController {
 			case MouseTargetType.CONTENT_TEXT: {
 				if (this.hiddenRangeModel.hasRanges()) {
 					let model = this.editor.getModel();
-					if (range.startColumn === model.getLineMaxColumn(range.startLineNumber)) {
+					if (model && range.startColumn === model.getLineMaxColumn(range.startLineNumber)) {
 						break;
 					}
 				}

@@ -12,7 +12,7 @@ import { marked } from 'vs/base/common/marked/marked';
 import { always } from 'vs/base/common/async';
 import * as arrays from 'vs/base/common/arrays';
 import { OS } from 'vs/base/common/platform';
-import Event, { Emitter, once, fromEventEmitter, chain } from 'vs/base/common/event';
+import Event, { Emitter, once, chain } from 'vs/base/common/event';
 import Cache from 'vs/base/common/cache';
 import { Action } from 'vs/base/common/actions';
 import { isPromiseCanceledError } from 'vs/base/common/errors';
@@ -153,6 +153,7 @@ export class ExtensionEditor extends BaseEditor {
 	private icon: HTMLImageElement;
 	private name: HTMLElement;
 	private identifier: HTMLElement;
+	private preview: HTMLElement;
 	private license: HTMLElement;
 	private publisher: HTMLElement;
 	private installCount: HTMLElement;
@@ -215,6 +216,7 @@ export class ExtensionEditor extends BaseEditor {
 		const title = append(details, $('.title'));
 		this.name = append(title, $('span.name.clickable', { title: localize('name', "Extension name") }));
 		this.identifier = append(title, $('span.identifier', { title: localize('extension id', "Extension identifier") }));
+		this.preview = append(title, $('span.preview', { title: localize('preview', "Preview") }));
 
 		const subtitle = append(details, $('.subtitle'));
 		this.publisher = append(subtitle, $('span.publisher.clickable', { title: localize('publisher', "Publisher name") }));
@@ -250,7 +252,7 @@ export class ExtensionEditor extends BaseEditor {
 
 		this.recommendation = append(details, $('.recommendation'));
 
-		chain(fromEventEmitter<{ error?: any; }>(this.extensionActionBar, 'run'))
+		chain(this.extensionActionBar.onDidRun)
 			.map(({ error }) => error)
 			.filter(error => !!error)
 			.on(this.onError, this, this.disposables);
@@ -286,6 +288,11 @@ export class ExtensionEditor extends BaseEditor {
 
 		this.name.textContent = extension.displayName;
 		this.identifier.textContent = extension.id;
+		if (extension.preview) {
+			this.preview.textContent = localize('preview', "Preview");
+		} else {
+			this.preview.textContent = null;
+		}
 
 		this.publisher.textContent = extension.publisherDisplayName;
 		this.description.textContent = extension.description;
@@ -472,6 +479,8 @@ export class ExtensionEditor extends BaseEditor {
 					append(this.content, scrollableContent.getDomNode());
 					this.contentDisposables.push(scrollableContent);
 				}
+			}, () => {
+				append(this.content, $('p.nocontent')).textContent = localize('noContributions', "No Contributions");
 			}));
 	}
 
