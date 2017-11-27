@@ -189,9 +189,6 @@ export interface IWindowService {
 	closeWindow(): TPromise<void>;
 	isFocused(): TPromise<boolean>;
 	setDocumentEdited(flag: boolean): TPromise<void>;
-	isMaximized(): TPromise<boolean>;
-	maximizeWindow(): TPromise<void>;
-	unmaximizeWindow(): TPromise<void>;
 	onWindowTitleDoubleClick(): TPromise<void>;
 	show(): TPromise<void>;
 	showMessageBoxSync(options: MessageBoxOptions): number;
@@ -295,6 +292,8 @@ export interface IAddFoldersRequest {
 }
 
 export interface IWindowConfiguration extends ParsedArgs, IOpenFileRequest {
+	machineId: string;
+
 	appRoot: string;
 	execPath: string;
 	isInitialStartup?: boolean;

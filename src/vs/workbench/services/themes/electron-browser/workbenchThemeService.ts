@@ -38,6 +38,7 @@ const DEFAULT_THEME_ID = 'vs-dark vscode-theme-defaults-themes-dark_plus-json';
 const DEFAULT_THEME_SETTING_VALUE = 'Default Dark+';
 
 const PERSISTED_THEME_STORAGE_KEY = 'colorThemeData';
+const PERSISTED_ICON_THEME_STORAGE_KEY = 'iconThemeData';
 
 const defaultThemeExtensionId = 'vscode-theme-defaults';
 const oldDefaultThemeExtensionId = 'vscode-theme-colorful-defaults';
@@ -131,6 +132,18 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 		themeData.setCustomTokenColors(this.tokenColorCustomizations);
 		this.updateDynamicCSSRules(themeData);
 		this.applyTheme(themeData, null, true);
+
+		let iconData: FileIconThemeData = null;
+		let persistedIconThemeData = this.storageService.get(PERSISTED_ICON_THEME_STORAGE_KEY);
+		if (persistedIconThemeData) {
+			iconData = FileIconThemeData.fromStorageData(persistedIconThemeData);
+			if (iconData) {
+				_applyIconTheme(iconData, () => {
+					this.doSetFileIconTheme(iconData);
+					return TPromise.wrap(iconData);
+				});
+			}
+		}
 
 		this.initialize().then(null, errors.onUnexpectedError).then(_ => {
 			this.installConfigurationListener();
@@ -353,29 +366,39 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 			return this.writeFileIconConfiguration(settingsTarget);
 		}
 		let onApply = (newIconTheme: FileIconThemeData) => {
-			if (newIconTheme) {
-				this.currentIconTheme = newIconTheme;
-			} else {
-				this.currentIconTheme = FileIconThemeData.noIconTheme();
-			}
+			this.doSetFileIconTheme(newIconTheme);
 
-			if (this.container) {
-				if (newIconTheme) {
-					$(this.container).addClass(fileIconsEnabledClass);
-				} else {
-					$(this.container).removeClass(fileIconsEnabledClass);
-				}
-			}
-			if (newIconTheme) {
-				this.sendTelemetry(newIconTheme.id, newIconTheme.extensionData, 'fileIcon');
-			}
-			this.onFileIconThemeChange.fire(this.currentIconTheme);
+			// remember theme data for a quick restore
+			this.storageService.store(PERSISTED_ICON_THEME_STORAGE_KEY, newIconTheme.toStorageData());
+
 			return this.writeFileIconConfiguration(settingsTarget);
 		};
 
 		return this.iconThemeStore.findThemeData(iconTheme).then(iconThemeData => {
-			return _applyIconTheme(iconThemeData, onApply);
+			if (!iconThemeData) {
+				iconThemeData = FileIconThemeData.noIconTheme();
+			}
+			return iconThemeData.ensureLoaded(this).then(_ => {
+				return _applyIconTheme(iconThemeData, onApply);
+			});
 		});
+	}
+
+	private doSetFileIconTheme(iconThemeData: FileIconThemeData): void {
+		this.currentIconTheme = iconThemeData;
+
+		if (this.container) {
+			if (iconThemeData.id) {
+				$(this.container).addClass(fileIconsEnabledClass);
+			} else {
+				$(this.container).removeClass(fileIconsEnabledClass);
+			}
+		}
+		if (iconThemeData.id) {
+			this.sendTelemetry(iconThemeData.id, iconThemeData.extensionData, 'fileIcon');
+		}
+		this.onFileIconThemeChange.fire(this.currentIconTheme);
+
 	}
 
 	private writeFileIconConfiguration(settingsTarget: ConfigurationTarget): TPromise<IFileIconTheme> {
@@ -394,17 +417,9 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 	}
 }
 
-function _applyIconTheme(this: any, data: FileIconThemeData, onApply: (theme: FileIconThemeData) => TPromise<IFileIconTheme>): TPromise<IFileIconTheme> {
-	if (!data) {
-		_applyRules('', iconThemeRulesClassName);
-		return onApply(data);
-	}
-	return data.ensureLoaded(this).then(styleSheetContent => {
-		_applyRules(styleSheetContent, iconThemeRulesClassName);
-		return onApply(data);
-	}, error => {
-		return TPromise.wrapError<IFileIconTheme>(new Error(nls.localize('error.cannotloadicontheme', "Unable to load {0}", data.path)));
-	});
+function _applyIconTheme(data: FileIconThemeData, onApply: (theme: FileIconThemeData) => TPromise<IFileIconTheme>): TPromise<IFileIconTheme> {
+	_applyRules(data.styleSheetContent, iconThemeRulesClassName);
+	return onApply(data);
 }
 
 function _applyRules(styleSheetContent: string, rulesClassName: string) {

@@ -31,7 +31,6 @@ import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IMessageService } from 'vs/platform/message/common/message';
-import { IListService } from 'vs/platform/list/browser/listService';
 import { MenuItemAction, IMenuService, MenuId } from 'vs/platform/actions/common/actions';
 import { IAction, Action, IActionItem, ActionRunner } from 'vs/base/common/actions';
 import { MenuItemActionItem, fillInActions } from 'vs/platform/actions/browser/menuItemActionItem';
@@ -39,7 +38,7 @@ import { SCMMenus } from './scmMenus';
 import { ActionBar, IActionItemProvider, Separator, ActionItem } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IThemeService, LIGHT } from 'vs/platform/theme/common/themeService';
 import { isSCMResource } from './scmUtil';
-import { attachListStyler, attachBadgeStyler, attachInputBoxStyler } from 'vs/platform/theme/common/styler';
+import { attachBadgeStyler, attachInputBoxStyler } from 'vs/platform/theme/common/styler';
 import Severity from 'vs/base/common/severity';
 import { IExtensionService } from 'vs/platform/extensions/common/extensions';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
@@ -54,6 +53,9 @@ import { render as renderOcticons } from 'vs/base/browser/ui/octiconLabel/octico
 import { StandardMouseEvent } from 'vs/base/browser/mouseEvent';
 import * as platform from 'vs/base/common/platform';
 import { format } from 'vs/base/common/strings';
+import { ISpliceable, ISequence, ISplice } from 'vs/base/common/sequence';
+import { firstIndex } from 'vs/base/common/arrays';
+import { WorkbenchList, IListService } from 'vs/platform/list/browser/listService';
 
 // TODO@Joao
 // Need to subclass MenuItemActionItem in order to respect
@@ -222,6 +224,7 @@ class MainPanel extends ViewletPanel {
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IThemeService private themeService: IThemeService,
 		@IContextKeyService private contextKeyService: IContextKeyService,
+		@IListService private listService: IListService,
 		@IMenuService private menuService: IMenuService
 	) {
 		super(localize('scm providers', "Source Control Providers"), {}, keybindingService, contextMenuService);
@@ -265,12 +268,11 @@ class MainPanel extends ViewletPanel {
 		const delegate = new ProvidersListDelegate();
 		const renderer = this.instantiationService.createInstance(ProviderRenderer);
 
-		this.list = new List<ISCMRepository>(container, delegate, [renderer], {
+		this.list = new WorkbenchList<ISCMRepository>(container, delegate, [renderer], {
 			identityProvider: repository => repository.provider.id
-		});
+		}, this.contextKeyService, this.listService, this.themeService);
 
 		this.disposables.push(this.list);
-		this.disposables.push(attachListStyler(this.list, this.themeService));
 		this.list.onSelectionChange(this.onListSelectionChange, this, this.disposables);
 		this.list.onContextMenu(this.onListContextMenu, this, this.disposables);
 
@@ -338,6 +340,7 @@ interface ResourceGroupTemplate {
 	name: HTMLElement;
 	count: CountBadge;
 	actionBar: ActionBar;
+	elementDisposable: IDisposable;
 	dispose: () => void;
 }
 
@@ -360,9 +363,10 @@ class ResourceGroupRenderer implements IRenderer<ISCMResourceGroup, ResourceGrou
 		const countContainer = append(element, $('.count'));
 		const count = new CountBadge(countContainer);
 		const styler = attachBadgeStyler(count, this.themeService);
+		const elementDisposable = EmptyDisposable;
 
 		return {
-			name, count, actionBar, dispose: () => {
+			name, count, actionBar, elementDisposable, dispose: () => {
 				actionBar.dispose();
 				styler.dispose();
 			}
@@ -370,11 +374,16 @@ class ResourceGroupRenderer implements IRenderer<ISCMResourceGroup, ResourceGrou
 	}
 
 	renderElement(group: ISCMResourceGroup, index: number, template: ResourceGroupTemplate): void {
+		template.elementDisposable.dispose();
+
 		template.name.textContent = group.label;
-		template.count.setCount(group.resourceCollection.resources.length);
 		template.actionBar.clear();
 		template.actionBar.context = group;
 		template.actionBar.push(this.scmMenus.getResourceGroupActions(group), { icon: true, label: false });
+
+		const updateCount = () => template.count.setCount(group.elements.length);
+		template.elementDisposable = group.onDidSplice(updateCount);
+		updateCount();
 	}
 
 	disposeTemplate(template: ResourceGroupTemplate): void {
@@ -493,6 +502,142 @@ function scmResourceIdentityProvider(r: ISCMResourceGroup | ISCMResource): strin
 	}
 }
 
+function isGroupVisible(group: ISCMResourceGroup) {
+	return group.elements.length > 0 || !group.hideWhenEmpty;
+}
+
+interface IGroupItem {
+	readonly group: ISCMResourceGroup;
+	visible: boolean;
+	readonly disposable: IDisposable;
+}
+
+class ResourceGroupSplicer {
+
+	private items: IGroupItem[] = [];
+	private disposables: IDisposable[] = [];
+
+	constructor(
+		groupSequence: ISequence<ISCMResourceGroup>,
+		private spliceable: ISpliceable<ISCMResourceGroup | ISCMResource>
+	) {
+		groupSequence.onDidSplice(this.onDidSpliceGroups, this, this.disposables);
+		this.onDidSpliceGroups({ start: 0, deleteCount: 0, toInsert: groupSequence.elements });
+	}
+
+	private onDidSpliceGroups({ start, deleteCount, toInsert }: ISplice<ISCMResourceGroup>): void {
+		let absoluteStart = 0;
+
+		for (let i = 0; i < start; i++) {
+			const item = this.items[i];
+			absoluteStart += (item.visible ? 1 : 0) + item.group.elements.length;
+		}
+
+		let absoluteDeleteCount = 0;
+
+		for (let i = 0; i < deleteCount; i++) {
+			const item = this.items[start + i];
+			absoluteDeleteCount += (item.visible ? 1 : 0) + item.group.elements.length;
+		}
+
+		const itemsToInsert: IGroupItem[] = [];
+		const absoluteToInsert: (ISCMResourceGroup | ISCMResource)[] = [];
+
+		for (const group of toInsert) {
+			const visible = isGroupVisible(group);
+
+			if (visible) {
+				absoluteToInsert.push(group);
+			}
+
+			for (const element of group.elements) {
+				absoluteToInsert.push(element);
+			}
+
+			const disposable = combinedDisposable([
+				group.onDidChange(() => this.onDidChangeGroup(group)),
+				group.onDidSplice(splice => this.onDidSpliceGroup(group, splice))
+			]);
+
+			itemsToInsert.push({ group, visible, disposable });
+		}
+
+		const itemsToDispose = this.items.splice(start, deleteCount, ...itemsToInsert);
+
+		for (const item of itemsToDispose) {
+			item.disposable.dispose();
+		}
+
+		this.spliceable.splice(absoluteStart, absoluteDeleteCount, absoluteToInsert);
+	}
+
+	private onDidChangeGroup(group: ISCMResourceGroup): void {
+		const itemIndex = firstIndex(this.items, item => item.group === group);
+
+		if (itemIndex < 0) {
+			return;
+		}
+
+		const item = this.items[itemIndex];
+		const visible = isGroupVisible(group);
+
+		if (item.visible === visible) {
+			return;
+		}
+
+		let absoluteStart = 0;
+
+		for (let i = 0; i < itemIndex; i++) {
+			const item = this.items[i];
+			absoluteStart += (item.visible ? 1 : 0) + item.group.elements.length;
+		}
+
+		if (visible) {
+			this.spliceable.splice(absoluteStart, 0, [group, ...group.elements]);
+		} else {
+			this.spliceable.splice(absoluteStart, 1 + group.elements.length, []);
+		}
+
+		item.visible = visible;
+	}
+
+	private onDidSpliceGroup(group: ISCMResourceGroup, { start, deleteCount, toInsert }: ISplice<ISCMResource>): void {
+		const itemIndex = firstIndex(this.items, item => item.group === group);
+
+		if (itemIndex < 0) {
+			return;
+		}
+
+		const item = this.items[itemIndex];
+		const visible = isGroupVisible(group);
+
+		if (!item.visible && !visible) {
+			return;
+		}
+
+		let absoluteStart = start;
+
+		for (let i = 0; i < itemIndex; i++) {
+			const item = this.items[i];
+			absoluteStart += (item.visible ? 1 : 0) + item.group.elements.length;
+		}
+
+		if (item.visible && !visible) {
+			this.spliceable.splice(absoluteStart, 1 + deleteCount, toInsert);
+		} else if (!item.visible && visible) {
+			this.spliceable.splice(absoluteStart, deleteCount, [group, ...toInsert]);
+		} else {
+			this.spliceable.splice(absoluteStart + 1, deleteCount, toInsert);
+		}
+
+		item.visible = visible;
+	}
+
+	dispose(): void {
+		this.disposables = dispose(this.disposables);
+	}
+}
+
 export class RepositoryPanel extends ViewletPanel {
 
 	private cachedHeight: number | undefined = undefined;
@@ -514,6 +659,7 @@ export class RepositoryPanel extends ViewletPanel {
 		@IMessageService protected messageService: IMessageService,
 		@IWorkbenchEditorService protected editorService: IWorkbenchEditorService,
 		@IEditorGroupService protected editorGroupService: IEditorGroupService,
+		@IContextKeyService protected contextKeyService: IContextKeyService,
 		@IInstantiationService protected instantiationService: IInstantiationService
 	) {
 		super(repository.provider.label, {}, keybindingService, contextMenuService);
@@ -561,7 +707,7 @@ export class RepositoryPanel extends ViewletPanel {
 
 	protected renderBody(container: HTMLElement): void {
 		const focusTracker = trackFocus(container);
-		this.disposables.push(focusTracker.addFocusListener(() => this.repository.focus()));
+		this.disposables.push(focusTracker.onDidFocus(() => this.repository.focus()));
 		this.disposables.push(focusTracker);
 
 		// Input
@@ -608,13 +754,10 @@ export class RepositoryPanel extends ViewletPanel {
 			this.instantiationService.createInstance(ResourceRenderer, this.menus, actionItemProvider, () => this.getSelectedResources()),
 		];
 
-		this.list = new List(this.listContainer, delegate, renderers, {
+		this.list = new WorkbenchList(this.listContainer, delegate, renderers, {
 			identityProvider: scmResourceIdentityProvider,
 			keyboardSupport: false
-		});
-
-		this.disposables.push(attachListStyler(this.list, this.themeService));
-		this.disposables.push(this.listService.register(this.list));
+		}, this.contextKeyService, this.listService, this.themeService);
 
 		chain(this.list.onOpen)
 			.map(e => e.elements[0])
@@ -629,8 +772,8 @@ export class RepositoryPanel extends ViewletPanel {
 		this.list.onContextMenu(this.onListContextMenu, this, this.disposables);
 		this.disposables.push(this.list);
 
-		this.repository.provider.onDidChangeResources(this.updateList, this, this.disposables);
-		this.updateList();
+		const listSplicer = new ResourceGroupSplicer(this.repository.provider.groups, this.list);
+		this.disposables.push(listSplicer);
 	}
 
 	layoutBody(height: number = this.cachedHeight): void {
@@ -676,19 +819,6 @@ export class RepositoryPanel extends ViewletPanel {
 
 	getActionsContext(): any {
 		return this.repository.provider;
-	}
-
-	private updateList(): void {
-		const elements = this.repository.provider.resources
-			.reduce<(ISCMResourceGroup | ISCMResource)[]>((r, g) => {
-				if (g.resourceCollection.resources.length === 0 && g.hideWhenEmpty) {
-					return r;
-				}
-
-				return [...r, g, ...g.resourceCollection.resources];
-			}, []);
-
-		this.list.splice(0, this.list.length, elements);
 	}
 
 	private open(e: ISCMResource): void {
@@ -797,7 +927,6 @@ export class SCMViewlet extends PanelViewlet implements IViewModel {
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IKeybindingService protected keybindingService: IKeybindingService,
 		@IMessageService protected messageService: IMessageService,
-		@IListService protected listService: IListService,
 		@IContextMenuService contextMenuService: IContextMenuService,
 		@IThemeService protected themeService: IThemeService,
 		@ICommandService protected commandService: ICommandService,

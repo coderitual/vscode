@@ -1,7 +1,7 @@
 {
   "name": "code-oss-dev",
   "version": "1.19.0",
-  "distro": "4120b819fd97e23adef120e48ceaa7d47c213c2c",
+  "distro": "610ca6990cab94b59284327a3741a81630fe3b41",
   "author": {
     "name": "Microsoft Corporation"
   },
@@ -37,10 +37,10 @@
     "node-pty": "0.7.3",
     "nsfw": "1.0.16",
     "semver": "4.3.6",
-    "v8-profiler": "jrieken/v8-profiler#vscode",
+    "v8-inspect-profiler": "^0.0.6",
     "vscode-chokidar": "1.6.2",
-    "vscode-debugprotocol": "1.24.0",
-    "vscode-ripgrep": "0.6.0-patch.0.2",
+    "vscode-debugprotocol": "1.25.0-pre.0",
+    "vscode-ripgrep": "^0.6.0-patch.0.5",
     "vscode-textmate": "^3.2.0",
     "xterm": "Tyriar/xterm.js#vscode-release/1.19",
     "yauzl": "2.8.0"
@@ -64,7 +64,7 @@
     "flatpak-bundler": "^0.1.1",
     "glob": "^5.0.13",
     "gulp": "^3.8.9",
-    "gulp-atom-electron": "^1.11.0",
+    "gulp-atom-electron": "^1.15.0",
     "gulp-azure-storage": "^0.7.0",
     "gulp-bom": "^1.0.0",
     "gulp-buffer": "0.0.2",

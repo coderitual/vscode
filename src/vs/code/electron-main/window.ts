@@ -7,10 +7,9 @@
 
 import * as path from 'path';
 import * as objects from 'vs/base/common/objects';
-import { stopProfiling } from 'vs/base/node/profiler';
 import nls = require('vs/nls');
 import URI from 'vs/base/common/uri';
-import { IStorageService } from 'vs/platform/storage/node/storage';
+import { IStateService } from 'vs/platform/state/common/state';
 import { shell, screen, BrowserWindow, systemPreferences, app, TouchBar, nativeImage } from 'electron';
 import { TPromise, TValueCallback } from 'vs/base/common/winjs.base';
 import { IEnvironmentService, ParsedArgs } from 'vs/platform/environment/common/environment';
@@ -72,15 +71,15 @@ interface ITouchBarSegment extends Electron.SegmentedControlSegment {
 
 export class CodeWindow implements ICodeWindow {
 
-	public static themeStorageKey = 'theme';
-	public static themeBackgroundStorageKey = 'themeBackground';
+	public static readonly themeStorageKey = 'theme';
+	public static readonly themeBackgroundStorageKey = 'themeBackground';
 
-	private static DEFAULT_BG_LIGHT = '#FFFFFF';
-	private static DEFAULT_BG_DARK = '#1E1E1E';
-	private static DEFAULT_BG_HC_BLACK = '#000000';
+	private static readonly DEFAULT_BG_LIGHT = '#FFFFFF';
+	private static readonly DEFAULT_BG_DARK = '#1E1E1E';
+	private static readonly DEFAULT_BG_HC_BLACK = '#000000';
 
-	private static MIN_WIDTH = 200;
-	private static MIN_HEIGHT = 120;
+	private static readonly MIN_WIDTH = 200;
+	private static readonly MIN_HEIGHT = 120;
 
 	private hiddenTitleBarStyle: boolean;
 	private showTimeoutHandle: any;
@@ -105,9 +104,9 @@ export class CodeWindow implements ICodeWindow {
 		@ILogService private logService: ILogService,
 		@IEnvironmentService private environmentService: IEnvironmentService,
 		@IConfigurationService private configurationService: IConfigurationService,
-		@IStorageService private storageService: IStorageService,
-		@IWorkspacesMainService private workspaceService: IWorkspacesMainService,
-		@IBackupMainService private backupService: IBackupMainService
+		@IStateService private stateService: IStateService,
+		@IWorkspacesMainService private workspacesMainService: IWorkspacesMainService,
+		@IBackupMainService private backupMainService: IBackupMainService
 	) {
 		this.touchBarGroups = [];
 		this._lastFocusTime = -1;
@@ -430,7 +429,7 @@ export class CodeWindow implements ICodeWindow {
 		this.toDispose.push(this.configurationService.onDidChangeConfiguration(e => this.onConfigurationUpdated()));
 
 		// Handle Workspace events
-		this.toDispose.push(this.workspaceService.onUntitledWorkspaceDeleted(e => this.onUntitledWorkspaceDeleted(e)));
+		this.toDispose.push(this.workspacesMainService.onUntitledWorkspaceDeleted(e => this.onUntitledWorkspaceDeleted(e)));
 	}
 
 	private onUntitledWorkspaceDeleted(workspace: IWorkspaceIdentifier): void {
@@ -493,7 +492,7 @@ export class CodeWindow implements ICodeWindow {
 
 		// Clear Document Edited if needed
 		if (isMacintosh && this._win.isDocumentEdited()) {
-			if (!isReload || !this.backupService.isHotExitEnabled()) {
+			if (!isReload || !this.backupMainService.isHotExitEnabled()) {
 				this._win.setDocumentEdited(false);
 			}
 		}
@@ -521,12 +520,6 @@ export class CodeWindow implements ICodeWindow {
 					this._win.webContents.openDevTools();
 				}
 			}, 10000);
-		}
-
-		// (--prof-startup) save profile to disk
-		const { profileStartup } = this.environmentService;
-		if (profileStartup) {
-			stopProfiling(profileStartup.dir, profileStartup.prefix).done(undefined, err => this.logService.error(err));
 		}
 	}
 
@@ -602,7 +595,7 @@ export class CodeWindow implements ICodeWindow {
 			return 'hc-black';
 		}
 
-		const theme = this.storageService.getItem<string>(CodeWindow.themeStorageKey, 'vs-dark');
+		const theme = this.stateService.getItem<string>(CodeWindow.themeStorageKey, 'vs-dark');
 
 		return theme.split(' ')[0];
 	}
@@ -612,7 +605,7 @@ export class CodeWindow implements ICodeWindow {
 			return CodeWindow.DEFAULT_BG_HC_BLACK;
 		}
 
-		const background = this.storageService.getItem<string>(CodeWindow.themeBackgroundStorageKey, null);
+		const background = this.stateService.getItem<string>(CodeWindow.themeBackgroundStorageKey, null);
 		if (!background) {
 			const baseTheme = this.getBaseTheme();
 

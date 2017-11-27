@@ -363,6 +363,35 @@ export function writeFileAndFlush(path: string, data: string | NodeBuffer, optio
 	});
 }
 
+export function writeFileAndFlushSync(path: string, data: string | NodeBuffer, options?: { mode?: number; flag?: string; }): void {
+	if (!canFlush) {
+		return fs.writeFileSync(path, data, options);
+	}
+
+	if (!options) {
+		options = { mode: 0o666, flag: 'w' };
+	}
+
+	// Open the file with same flags and mode as fs.writeFile()
+	const fd = fs.openSync(path, options.flag, options.mode);
+
+	try {
+
+		// It is valid to pass a fd handle to fs.writeFile() and this will keep the handle open!
+		fs.writeFileSync(fd, data);
+
+		// Flush contents (not metadata) of the file to disk
+		try {
+			fs.fdatasyncSync(fd);
+		} catch (syncError) {
+			console.warn('[node.js fs] fdatasyncSync is now disabled for this session because it failed: ', syncError);
+			canFlush = false;
+		}
+	} finally {
+		fs.closeSync(fd);
+	}
+}
+
 /**
  * Copied from: https://github.com/Microsoft/vscode-node-debug/blob/master/src/node/pathUtilities.ts#L83
  *
@@ -378,7 +407,7 @@ export function realcaseSync(path: string): string {
 		return path;
 	}
 
-	const name = paths.basename(path).toLowerCase();
+	const name = (paths.basename(path) /* can be '' for windows drive letters */ || path).toLowerCase();
 	try {
 		const entries = readdirSync(dir);
 		const found = entries.filter(e => e.toLowerCase() === name);	// use a case insensitive search

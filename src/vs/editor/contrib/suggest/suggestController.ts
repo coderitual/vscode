@@ -10,7 +10,6 @@ import { onUnexpectedError } from 'vs/base/common/errors';
 import { isFalsyOrEmpty } from 'vs/base/common/arrays';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { ContextKeyExpr, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { IEditorContribution, ScrollType } from 'vs/editor/common/editorCommon';
@@ -90,14 +89,25 @@ export class SuggestController implements IEditorContribution {
 	constructor(
 		private _editor: ICodeEditor,
 		@ICommandService private _commandService: ICommandService,
-		@ITelemetryService private _telemetryService: ITelemetryService,
-		@IContextKeyService _contextKeyService: IContextKeyService,
-		@IInstantiationService _instantiationService: IInstantiationService
+		@IContextKeyService private _contextKeyService: IContextKeyService,
+		@IInstantiationService private _instantiationService: IInstantiationService,
 	) {
 		this._model = new SuggestModel(this._editor);
-		this._toDispose.push(this._model.onDidTrigger(e => this._widget.showTriggered(e.auto)));
-		this._toDispose.push(this._model.onDidSuggest(e => this._widget.showSuggestions(e.completionModel, e.isFrozen, e.auto)));
-		this._toDispose.push(this._model.onDidCancel(e => !e.retrigger && this._widget.hideWidget()));
+
+		this._toDispose.push(this._model.onDidTrigger(e => {
+			if (!this._widget) {
+				this._createSuggestWidget();
+			}
+			this._widget.showTriggered(e.auto);
+		}));
+		this._toDispose.push(this._model.onDidCancel(e => {
+			if (this._widget && !e.retrigger) {
+				this._widget.hideWidget();
+			}
+		}));
+		this._toDispose.push(this._model.onDidSuggest(e => {
+			this._widget.showSuggestions(e.completionModel, e.isFrozen, e.auto);
+		}));
 
 		// Manage the acceptSuggestionsOnEnter context key
 		let acceptSuggestionsOnEnter = SuggestContext.AcceptSuggestionsOnEnter.bindTo(_contextKeyService);
@@ -107,12 +117,15 @@ export class SuggestController implements IEditorContribution {
 		};
 		this._toDispose.push(this._editor.onDidChangeConfiguration((e) => updateFromConfig()));
 		updateFromConfig();
+	}
 
-		this._widget = _instantiationService.createInstance(SuggestWidget, this._editor);
+	private _createSuggestWidget(): void {
+
+		this._widget = this._instantiationService.createInstance(SuggestWidget, this._editor);
 		this._toDispose.push(this._widget.onDidSelect(this._onDidSelectItem, this));
 
 		// Wire up logic to accept a suggestion on certain characters
-		const autoAcceptOracle = new AcceptOnCharacterOracle(_editor, this._widget, item => this._onDidSelectItem(item));
+		const autoAcceptOracle = new AcceptOnCharacterOracle(this._editor, this._widget, item => this._onDidSelectItem(item));
 		this._toDispose.push(
 			autoAcceptOracle,
 			this._model.onDidSuggest(e => {
@@ -122,7 +135,7 @@ export class SuggestController implements IEditorContribution {
 			})
 		);
 
-		let makesTextEdit = SuggestContext.MakesTextEdit.bindTo(_contextKeyService);
+		let makesTextEdit = SuggestContext.MakesTextEdit.bindTo(this._contextKeyService);
 		this._toDispose.push(this._widget.onDidFocus(item => {
 
 			const position = this._editor.getPosition();
@@ -209,15 +222,6 @@ export class SuggestController implements IEditorContribution {
 		}
 
 		this._alertCompletionItem(item);
-		/* __GDPR__
-		"suggestSnippetInsert" : {
-			"suggestionType" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
-			"${include}": [
-				"${EditorTelemetryData}"
-			]
-		}
-		*/
-		this._telemetryService.publicLog('suggestSnippetInsert', { ...this._editor.getTelemetryData(), suggestionType: suggestion.type });
 	}
 
 	private _alertCompletionItem({ suggestion }: ICompletionItem): void {

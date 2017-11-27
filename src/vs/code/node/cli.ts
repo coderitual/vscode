@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { assign } from 'vs/base/common/objects';
 import { parseCLIProcessArgv, buildHelpMessage } from 'vs/platform/environment/node/argv';
@@ -11,10 +11,11 @@ import { ParsedArgs } from 'vs/platform/environment/common/environment';
 import product from 'vs/platform/node/product';
 import pkg from 'vs/platform/node/package';
 
-import * as fs from 'fs';
 import * as paths from 'path';
 import * as os from 'os';
 import { whenDeleted } from 'vs/base/node/pfs';
+import { writeFileAndFlushSync } from 'vs/base/node/extfs';
+import { findFreePort } from 'vs/base/node/ports';
 
 function shouldSpawnCliProcess(argv: ParsedArgs): boolean {
 	return !!argv['install-source']
@@ -27,7 +28,7 @@ interface IMainCli {
 	main: (argv: ParsedArgs) => TPromise<void>;
 }
 
-export function main(argv: string[]): TPromise<void> {
+export async function main(argv: string[]): TPromise<any> {
 	let args: ParsedArgs;
 
 	try {
@@ -53,8 +54,16 @@ export function main(argv: string[]): TPromise<void> {
 
 		delete env['ELECTRON_RUN_AS_NODE'];
 
+		let processCallbacks: ((child: ChildProcess) => Thenable<any>)[] = [];
+
 		if (args.verbose) {
 			env['ELECTRON_ENABLE_LOGGING'] = '1';
+
+			processCallbacks.push(child => {
+				child.stdout.on('data', (data: Buffer) => console.log(data.toString('utf8').trim()));
+				child.stderr.on('data', (data: Buffer) => console.log(data.toString('utf8').trim()));
+				return new TPromise<void>(c => child.once('exit', () => c(null)));
+			});
 		}
 
 		// If we are started with --wait create a random temporary file
@@ -66,7 +75,7 @@ export function main(argv: string[]): TPromise<void> {
 			let waitMarkerError: Error;
 			const randomTmpFile = paths.join(os.tmpdir(), Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 10));
 			try {
-				fs.writeFileSync(randomTmpFile, '');
+				writeFileAndFlushSync(randomTmpFile, '');
 				waitMarkerFilePath = randomTmpFile;
 				argv.push('--waitMarkerFilePath', waitMarkerFilePath);
 			} catch (error) {
@@ -82,6 +91,67 @@ export function main(argv: string[]): TPromise<void> {
 			}
 		}
 
+		// If we have been started with `--prof-startup` we need to find free ports to profile
+		// the main process, the renderer, and the extension host. We also disable v8 cached data
+		// to get better profile traces. Last, we listen on stdout for a signal that tells us to
+		// stop profiling.
+		if (args['prof-startup']) {
+
+			const portMain = await findFreePort(9222, 10, 6000);
+			const portRenderer = await findFreePort(portMain + 1, 10, 6000);
+			const portExthost = await findFreePort(portRenderer + 1, 10, 6000);
+
+			if (!portMain || !portRenderer || !portExthost) {
+				console.error('Failed to find free ports for profiler to connect to do.');
+				return;
+			}
+
+			const filenamePrefix = paths.join(os.homedir(), Math.random().toString(16).slice(-4));
+
+			argv.push(`--inspect-brk=${portMain}`);
+			argv.push(`--remote-debugging-port=${portRenderer}`);
+			argv.push(`--inspect-brk-extensions=${portExthost}`);
+			argv.push(`--prof-startup-prefix`, filenamePrefix);
+			argv.push(`--no-cached-data`);
+
+			writeFileAndFlushSync(filenamePrefix, argv.slice(-6).join('|'));
+
+			processCallbacks.push(async child => {
+
+				// load and start profiler
+				const profiler = await import('v8-inspect-profiler');
+				const main = await profiler.startProfiling({ port: portMain });
+				const renderer = await profiler.startProfiling({ port: portRenderer, tries: 200 });
+				const extHost = await profiler.startProfiling({ port: portExthost, tries: 300 });
+
+				// wait for the renderer to delete the
+				// marker file
+				whenDeleted(filenamePrefix);
+
+				let profileMain = await main.stop();
+				let profileRenderer = await renderer.stop();
+				let profileExtHost = await extHost.stop();
+				let suffix = '';
+
+				if (!process.env['VSCODE_DEV']) {
+					// when running from a not-development-build we remove
+					// absolute filenames because we don't want to reveal anything
+					// about users. We also append the `.txt` suffix to make it
+					// easier to attach these files to GH issues
+					profileMain = profiler.rewriteAbsolutePaths(profileMain, 'piiRemoved');
+					profileRenderer = profiler.rewriteAbsolutePaths(profileRenderer, 'piiRemoved');
+					profileExtHost = profiler.rewriteAbsolutePaths(profileExtHost, 'piiRemoved');
+					suffix = '.txt';
+				}
+
+				// finally stop profiling and save profiles to disk
+				await profiler.writeProfile(profileMain, `${filenamePrefix}-main.cpuprofile${suffix}`);
+				await profiler.writeProfile(profileRenderer, `${filenamePrefix}-renderer.cpuprofile${suffix}`);
+				await profiler.writeProfile(profileExtHost, `${filenamePrefix}-exthost.cpuprofile${suffix}`);
+
+			});
+		}
+
 		const options = {
 			detached: true,
 			env
@@ -93,15 +163,6 @@ export function main(argv: string[]): TPromise<void> {
 
 		const child = spawn(process.execPath, argv.slice(2), options);
 
-		if (args.verbose) {
-			child.stdout.on('data', (data: Buffer) => console.log(data.toString('utf8').trim()));
-			child.stderr.on('data', (data: Buffer) => console.log(data.toString('utf8').trim()));
-		}
-
-		if (args.verbose) {
-			return new TPromise<void>(c => child.once('exit', () => c(null)));
-		}
-
 		if (args.wait && waitMarkerFilePath) {
 			return new TPromise<void>(c => {
 
@@ -112,6 +173,8 @@ export function main(argv: string[]): TPromise<void> {
 				whenDeleted(waitMarkerFilePath).done(c, c);
 			});
 		}
+
+		return TPromise.join(processCallbacks.map(callback => callback(child)));
 	}
 
 	return TPromise.as(null);

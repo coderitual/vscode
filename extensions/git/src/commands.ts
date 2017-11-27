@@ -556,7 +556,7 @@ export class CommandCenter {
 
 	@command('git.stage')
 	async stage(...resourceStates: SourceControlResourceState[]): Promise<void> {
-		if (resourceStates.length === 0 || !(resourceStates[0].resourceUri instanceof Uri)) {
+		if (resourceStates.length === 0 || (resourceStates[0] && !(resourceStates[0].resourceUri instanceof Uri))) {
 			const resource = this.getSCMResource();
 
 			if (!resource) {
@@ -733,7 +733,7 @@ export class CommandCenter {
 
 	@command('git.unstage')
 	async unstage(...resourceStates: SourceControlResourceState[]): Promise<void> {
-		if (resourceStates.length === 0 || !(resourceStates[0].resourceUri instanceof Uri)) {
+		if (resourceStates.length === 0 || (resourceStates[0] && !(resourceStates[0].resourceUri instanceof Uri))) {
 			const resource = this.getSCMResource();
 
 			if (!resource) {
@@ -799,7 +799,7 @@ export class CommandCenter {
 
 	@command('git.clean')
 	async clean(...resourceStates: SourceControlResourceState[]): Promise<void> {
-		if (resourceStates.length === 0 || !(resourceStates[0].resourceUri instanceof Uri)) {
+		if (resourceStates.length === 0 || (resourceStates[0] && !(resourceStates[0].resourceUri instanceof Uri))) {
 			const resource = this.getSCMResource();
 
 			if (!resource) {
@@ -979,6 +979,7 @@ export class CommandCenter {
 			}
 
 			return await window.showInputBox({
+				value: opts && opts.defaultMsg,
 				placeHolder: localize('commit message', "Commit message"),
 				prompt: localize('provide commit message', "Please provide a commit message"),
 				ignoreFocusOut: true
@@ -1022,7 +1023,15 @@ export class CommandCenter {
 
 	@command('git.commitStagedAmend', { repository: true })
 	async commitStagedAmend(repository: Repository): Promise<void> {
-		await this.commitWithAnyInput(repository, { all: false, amend: true });
+		let msg;
+		if (repository.HEAD) {
+			if (repository.HEAD.commit) {
+				let id = repository.HEAD.commit;
+				let commit = await repository.getCommit(id);
+				msg = commit.message;
+			}
+		}
+		await this.commitWithAnyInput(repository, { all: false, amend: true, defaultMsg: msg });
 	}
 
 	@command('git.commitAll', { repository: true })
@@ -1221,6 +1230,16 @@ export class CommandCenter {
 		await repository.tag(name, message);
 	}
 
+	@command('git.fetch', { repository: true })
+	async fetch(repository: Repository): Promise<void> {
+		if (repository.remotes.length === 0) {
+			window.showWarningMessage(localize('no remotes to fetch', "This repository has no remotes configured to fetch from."));
+			return;
+		}
+
+		await repository.fetch();
+	}
+
 	@command('git.pullFrom', { repository: true })
 	async pullFrom(repository: Repository): Promise<void> {
 		const remotes = repository.remotes;
@@ -1404,14 +1423,9 @@ export class CommandCenter {
 		await repository.pushTo(choice, branchName, true);
 	}
 
-	@command('git.showOutput')
-	showOutput(): void {
-		this.outputChannel.show();
-	}
-
 	@command('git.ignore')
 	async ignore(...resourceStates: SourceControlResourceState[]): Promise<void> {
-		if (resourceStates.length === 0 || !(resourceStates[0].resourceUri instanceof Uri)) {
+		if (resourceStates.length === 0 || (resourceStates[0] && !(resourceStates[0].resourceUri instanceof Uri))) {
 			const resource = this.getSCMResource();
 
 			if (!resource) {
@@ -1539,7 +1553,7 @@ export class CommandCenter {
 						message = localize('clean repo', "Please clean your repository working tree before checkout.");
 						break;
 					case GitErrorCodes.PushRejected:
-						message = localize('cant push', "Can't push refs to remote. Run 'Pull' first to integrate your changes.");
+						message = localize('cant push', "Can't push refs to remote. Try running 'Pull' first to integrate your changes.");
 						break;
 					default:
 						const hint = (err.stderr || err.message || String(err))
