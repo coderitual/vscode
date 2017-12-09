@@ -325,7 +325,13 @@ export class CodeMenu {
 		const hide = new MenuItem({ label: nls.localize('mHide', "Hide {0}", product.nameLong), role: 'hide', accelerator: 'Command+H' });
 		const hideOthers = new MenuItem({ label: nls.localize('mHideOthers', "Hide Others"), role: 'hideothers', accelerator: 'Command+Alt+H' });
 		const showAll = new MenuItem({ label: nls.localize('mShowAll', "Show All"), role: 'unhide' });
-		const quit = new MenuItem(this.likeAction('workbench.action.quit', { label: nls.localize('miQuit', "Quit {0}", product.nameLong), click: () => this.windowsMainService.quit() }));
+		const quit = new MenuItem(this.likeAction('workbench.action.quit', {
+			label: nls.localize('miQuit', "Quit {0}", product.nameLong), click: () => {
+				if (this.windowsMainService.getWindowCount() === 0 || !!this.windowsMainService.getFocusedWindow()) {
+					this.windowsMainService.quit(); // fix for https://github.com/Microsoft/vscode/issues/39191
+				}
+			}
+		}));
 
 		const actions = [about];
 		actions.push(...checkForUpdates);
@@ -933,7 +939,7 @@ export class CodeMenu {
 
 		let reportIssuesItem: Electron.MenuItem = null;
 		if (product.reportIssueUrl) {
-			const label = nls.localize({ key: 'miReportIssues', comment: ['&& denotes a mnemonic'] }, "Report &&Issues");
+			const label = nls.localize({ key: 'miReportIssue', comment: ['&& denotes a mnemonic', 'Translate this to "Report Issue in English" in all languages please!'] }, "Report &&Issue");
 
 			if (this.windowsMainService.getWindowCount() > 0) {
 				reportIssuesItem = this.createMenuItem(label, 'workbench.action.reportIssues');
@@ -1209,18 +1215,18 @@ export class CodeMenu {
 			buttons.push(mnemonicButtonLabel(nls.localize({ key: 'copy', comment: ['&& denotes a mnemonic'] }, "&&Copy"))); // https://github.com/Microsoft/vscode/issues/37608
 		}
 
-		dialog.showMessageBox(lastActiveWindow && lastActiveWindow.win, {
+		const result = dialog.showMessageBox(lastActiveWindow && lastActiveWindow.win, {
 			title: product.nameLong,
 			type: 'info',
 			message: product.nameLong,
 			detail: `\n${detail}`,
 			buttons,
 			noLink: true
-		}, result => {
-			if (isWindows && result === 1) {
-				clipboard.writeText(detail);
-			}
 		});
+
+		if (isWindows && result === 1) {
+			clipboard.writeText(detail);
+		}
 
 		this.reportMenuActionTelemetry('showAboutDialog');
 	}

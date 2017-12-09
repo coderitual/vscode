@@ -34,6 +34,8 @@ import { debounceEvent } from 'vs/base/common/event';
 import { SimpleFileResourceDragAndDrop } from 'vs/base/parts/tree/browser/treeDnd';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { WorkbenchTree, IListService } from 'vs/platform/list/browser/listService';
+import { IActivityService, NumberBadge } from 'vs/workbench/services/activity/common/activity';
+import { localize } from 'vs/nls';
 
 export class MarkersPanel extends Panel {
 
@@ -67,7 +69,8 @@ export class MarkersPanel extends Panel {
 		@IContextKeyService private contextKeyService: IContextKeyService,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IListService private listService: IListService,
-		@IThemeService themeService: IThemeService
+		@IThemeService themeService: IThemeService,
+		@IActivityService private activityService: IActivityService
 	) {
 		super(Constants.MARKERS_PANEL_ID, telemetryService, themeService);
 		this.delayedRefresh = new Delayer<void>(500);
@@ -122,11 +125,17 @@ export class MarkersPanel extends Panel {
 	}
 
 	public setVisible(visible: boolean): TPromise<void> {
-		let promise: TPromise<void> = super.setVisible(visible);
-		if (!visible) {
-			this.rangeHighlightDecorations.removeHighlightRange();
-		}
-		return promise;
+		const wasVisible = this.isVisible();
+		return super.setVisible(visible)
+			.then(() => {
+				if (this.isVisible()) {
+					if (!wasVisible) {
+						this.refreshPanel();
+					}
+				} else {
+					this.rangeHighlightDecorations.removeHighlightRange();
+				}
+			});
 	}
 
 	public getActions(): IAction[] {
@@ -166,13 +175,16 @@ export class MarkersPanel extends Panel {
 	}
 
 	private refreshPanel(): TPromise<any> {
-		this.collapseAllAction.enabled = this.markersModel.hasFilteredResources();
-		dom.toggleClass(this.treeContainer, 'hidden', !this.markersModel.hasFilteredResources());
-		this.renderMessage();
-		if (this.markersModel.hasFilteredResources()) {
-			return this.tree.refresh().then(() => {
-				this.autoExpand();
-			});
+		this.refreshBadge();
+		if (this.isVisible()) {
+			this.collapseAllAction.enabled = this.markersModel.hasFilteredResources();
+			dom.toggleClass(this.treeContainer, 'hidden', !this.markersModel.hasFilteredResources());
+			this.renderMessage();
+			if (this.markersModel.hasFilteredResources()) {
+				return this.tree.refresh().then(() => {
+					this.autoExpand();
+				});
+			}
 		}
 		return TPromise.as(null);
 	}
@@ -182,6 +194,13 @@ export class MarkersPanel extends Panel {
 		this.autoExpanded = new Set<string>();
 		this.refreshPanel();
 		this.autoReveal();
+	}
+
+	private refreshBadge(): void {
+		const total = this.markersModel.total();
+		const count = this.markersModel.count();
+		const message = total === count ? localize('totalProblems', 'Total {0} Problems', total) : localize('filteredProblems', 'Showing {0} of {1} Problems', count, total);
+		this.activityService.showActivity(this.getId(), new NumberBadge(count, () => message));
 	}
 
 	private createMessageBox(parent: HTMLElement): void {

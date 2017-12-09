@@ -197,7 +197,7 @@ class DirtyDiffWidget extends PeekViewWidget {
 		@IMessageService private messageService: IMessageService,
 		@IContextKeyService contextKeyService: IContextKeyService
 	) {
-		super(editor, { isResizeable: true, frameWidth: 1 });
+		super(editor, { isResizeable: true, frameWidth: 1, keepEditorSelection: true });
 
 		themeService.onThemeChange(this._applyTheme, this, this._disposables);
 		this._applyTheme(themeService.getTheme());
@@ -243,7 +243,7 @@ class DirtyDiffWidget extends PeekViewWidget {
 
 		const changeType = getChangeType(change);
 		const changeTypeColor = getChangeTypeColor(this.themeService.getTheme(), changeType);
-		this.style({ frameColor: changeTypeColor });
+		this.style({ frameColor: changeTypeColor, arrowColor: changeTypeColor });
 
 		this._actionbarWidget.context = [this.model.modified.uri, this.model.changes, index];
 		this.show(position, height);

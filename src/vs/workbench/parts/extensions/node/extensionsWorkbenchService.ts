@@ -424,14 +424,6 @@ export class ExtensionsWorkbenchService implements IExtensionsWorkbenchService {
 	}
 
 	open(extension: IExtension, sideByside: boolean = false): TPromise<any> {
-		/* __GDPR__
-			"extensionGallery:open" : {
-				"${include}": [
-					"${GalleryExtensionTelemetryData}"
-				]
-			}
-		*/
-		this.telemetryService.publicLog('extensionGallery:open', extension.telemetryData);
 		return this.editorService.openEditor(this.instantiationService.createInstance(ExtensionsInput, extension), null, sideByside);
 	}
 
@@ -753,9 +745,16 @@ export class ExtensionsWorkbenchService implements IExtensionsWorkbenchService {
 		if (extension) {
 			this.installing = installing ? this.installing.filter(e => e !== installing) : this.installing;
 
-			if (!error) {
+			if (error) {
+				if (extension.gallery) {
+					// Updating extension can be only a gallery extension
+					const installed = this.installed.filter(e => e.id === extension.id)[0];
+					if (installed && installing) {
+						installing.operation = Operation.Updating;
+					}
+				}
+			} else {
 				extension.local = local;
-
 				const installed = this.installed.filter(e => e.id === extension.id)[0];
 				if (installed) {
 					if (installing) {

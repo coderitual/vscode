@@ -207,30 +207,31 @@ export class CommandCenter {
 		}
 
 		try {
-			if (ref === '~') {
+			let gitRef = ref;
+
+			if (gitRef === '~') {
 				const uriString = uri.toString();
 				const [indexStatus] = repository.indexGroup.resourceStates.filter(r => r.resourceUri.toString() === uriString);
-				ref = indexStatus ? '' : 'HEAD';
+				gitRef = indexStatus ? '' : 'HEAD';
 			}
 
-			const { size, object } = await repository.lstree(ref, uri.fsPath);
-
-			if (size > 1000000) { // 1 MB
-				return Uri.parse(`data:;label:${path.basename(uri.fsPath)};description:${ref},`);
-			}
-
+			const { size, object } = await repository.lstree(gitRef, uri.fsPath);
 			const { mimetype, encoding } = await repository.detectObjectType(object);
 
 			if (mimetype === 'text/plain') {
 				return toGitUri(uri, ref);
 			}
 
-			if (ImageMimetypes.indexOf(mimetype) > -1) {
-				const contents = await repository.buffer(ref, uri.fsPath);
-				return Uri.parse(`data:${mimetype};label:${path.basename(uri.fsPath)};description:${ref};size:${size};base64,${contents.toString('base64')}`);
+			if (size > 1000000) { // 1 MB
+				return Uri.parse(`data:;label:${path.basename(uri.fsPath)};description:${gitRef},`);
 			}
 
-			return Uri.parse(`data:;label:${path.basename(uri.fsPath)};description:${ref},`);
+			if (ImageMimetypes.indexOf(mimetype) > -1) {
+				const contents = await repository.buffer(gitRef, uri.fsPath);
+				return Uri.parse(`data:${mimetype};label:${path.basename(uri.fsPath)};description:${gitRef};size:${size};base64,${contents.toString('base64')}`);
+			}
+
+			return Uri.parse(`data:;label:${path.basename(uri.fsPath)};description:${gitRef},`);
 
 		} catch (err) {
 			return toGitUri(uri, ref);
@@ -407,35 +408,52 @@ export class CommandCenter {
 
 	@command('git.init')
 	async init(): Promise<void> {
-		const homeUri = Uri.file(os.homedir());
-		const defaultUri = workspace.workspaceFolders && workspace.workspaceFolders.length > 0
-			? Uri.file(workspace.workspaceFolders[0].uri.fsPath)
-			: homeUri;
+		let path: string | undefined;
 
-		const result = await window.showOpenDialog({
-			canSelectFiles: false,
-			canSelectFolders: true,
-			canSelectMany: false,
-			defaultUri,
-			openLabel: localize('init repo', "Initialize Repository")
-		});
+		if (workspace.workspaceFolders && workspace.workspaceFolders.length > 1) {
+			const placeHolder = localize('init', "Pick workspace folder to initialize git repo in");
+			const items = workspace.workspaceFolders.map(folder => ({ label: folder.name, description: folder.uri.fsPath, folder }));
+			const item = await window.showQuickPick(items, { placeHolder, ignoreFocusOut: true });
 
-		if (!result || result.length === 0) {
-			return;
-		}
-
-		const uri = result[0];
-
-		if (homeUri.toString().startsWith(uri.toString())) {
-			const yes = localize('create repo', "Initialize Repository");
-			const answer = await window.showWarningMessage(localize('are you sure', "This will create a Git repository in '{0}'. Are you sure you want to continue?", uri.fsPath), yes);
-
-			if (answer !== yes) {
+			if (!item) {
 				return;
 			}
+
+			path = item.folder.uri.fsPath;
 		}
 
-		const path = uri.fsPath;
+		if (!path) {
+			const homeUri = Uri.file(os.homedir());
+			const defaultUri = workspace.workspaceFolders && workspace.workspaceFolders.length > 0
+				? Uri.file(workspace.workspaceFolders[0].uri.fsPath)
+				: homeUri;
+
+			const result = await window.showOpenDialog({
+				canSelectFiles: false,
+				canSelectFolders: true,
+				canSelectMany: false,
+				defaultUri,
+				openLabel: localize('init repo', "Initialize Repository")
+			});
+
+			if (!result || result.length === 0) {
+				return;
+			}
+
+			const uri = result[0];
+
+			if (homeUri.toString().startsWith(uri.toString())) {
+				const yes = localize('create repo', "Initialize Repository");
+				const answer = await window.showWarningMessage(localize('are you sure', "This will create a Git repository in '{0}'. Are you sure you want to continue?", uri.fsPath), yes);
+
+				if (answer !== yes) {
+					return;
+				}
+			}
+
+			path = uri.fsPath;
+		}
+
 		await this.git.init(path);
 		await this.model.tryOpenRepository(path);
 	}

@@ -5,10 +5,10 @@
 
 'use strict';
 
-import { workspace, WorkspaceFoldersChangeEvent, Uri, window, Event, EventEmitter, QuickPickItem, Disposable, SourceControl, SourceControlResourceGroup, TextEditor, Memento } from 'vscode';
+import { workspace, WorkspaceFoldersChangeEvent, Uri, window, Event, EventEmitter, QuickPickItem, Disposable, SourceControl, SourceControlResourceGroup, TextEditor, Memento, ConfigurationChangeEvent } from 'vscode';
 import { Repository, RepositoryState } from './repository';
 import { memoize, sequentialize, debounce } from './decorators';
-import { dispose, anyEvent, filterEvent } from './util';
+import { dispose, anyEvent, filterEvent, IDisposable, isDescendant } from './util';
 import { Git, GitErrorCodes } from './git';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -44,10 +44,6 @@ interface OpenRepository extends Disposable {
 	repository: Repository;
 }
 
-function isParent(parent: string, child: string): boolean {
-	return child.startsWith(parent);
-}
-
 export class Model {
 
 	private _onDidOpenRepository = new EventEmitter<Repository>();
@@ -67,44 +63,16 @@ export class Model {
 
 	private possibleGitRepositoryPaths = new Set<string>();
 
-	private enabled = false;
-	private configurationChangeDisposable: Disposable;
 	private disposables: Disposable[] = [];
 
 	constructor(private git: Git, private globalState: Memento) {
-		const config = workspace.getConfiguration('git');
-		this.enabled = config.get<boolean>('enabled') === true;
-
-		this.configurationChangeDisposable = workspace.onDidChangeConfiguration(this.onDidChangeConfiguration, this);
-
-		if (this.enabled) {
-			this.enable();
-		}
-	}
-
-	private onDidChangeConfiguration(): void {
-		const config = workspace.getConfiguration('git');
-		const enabled = config.get<boolean>('enabled') === true;
-
-		if (enabled === this.enabled) {
-			return;
-		}
-
-		this.enabled = enabled;
-
-		if (enabled) {
-			this.enable();
-		} else {
-			this.disable();
-		}
-	}
-
-	private enable(): void {
 		workspace.onDidChangeWorkspaceFolders(this.onDidChangeWorkspaceFolders, this, this.disposables);
 		this.onDidChangeWorkspaceFolders({ added: workspace.workspaceFolders || [], removed: [] });
 
 		window.onDidChangeVisibleTextEditors(this.onDidChangeVisibleTextEditors, this, this.disposables);
 		this.onDidChangeVisibleTextEditors(window.visibleTextEditors);
+
+		workspace.onDidChangeConfiguration(this.onDidChangeConfiguration, this, this.disposables);
 
 		const fsWatcher = workspace.createFileSystemWatcher('**');
 		this.disposables.push(fsWatcher);
@@ -115,15 +83,6 @@ export class Model {
 		onPossibleGitRepositoryChange(this.onPossibleGitRepositoryChange, this, this.disposables);
 
 		this.scanWorkspaceFolders();
-	}
-
-	private disable(): void {
-		const openRepositories = [...this.openRepositories];
-		openRepositories.forEach(r => r.dispose());
-		this.openRepositories = [];
-
-		this.possibleGitRepositoryPaths.clear();
-		this.disposables = dispose(this.disposables);
 	}
 
 	/**
@@ -169,7 +128,21 @@ export class Model {
 			.map(folder => this.getOpenRepository(folder.uri))
 			.filter(r => !!r)
 			.filter(r => !activeRepositories.has(r!.repository))
-			.filter(r => !(workspace.workspaceFolders || []).some(f => isParent(f.uri.fsPath, r!.repository.root))) as OpenRepository[];
+			.filter(r => !(workspace.workspaceFolders || []).some(f => isDescendant(f.uri.fsPath, r!.repository.root))) as OpenRepository[];
+
+		possibleRepositoryFolders.forEach(p => this.tryOpenRepository(p.uri.fsPath));
+		openRepositoriesToDispose.forEach(r => r.dispose());
+	}
+
+	private onDidChangeConfiguration(): void {
+		const possibleRepositoryFolders = (workspace.workspaceFolders || [])
+			.filter(folder => workspace.getConfiguration('git', folder.uri).get<boolean>('enabled') === true)
+			.filter(folder => !this.getOpenRepository(folder.uri));
+
+		const openRepositoriesToDispose = this.openRepositories
+			.map(repository => ({ repository, root: Uri.file(repository.repository.root) }))
+			.filter(({ root }) => workspace.getConfiguration('git', root).get<boolean>('enabled') !== true)
+			.map(({ repository }) => repository);
 
 		possibleRepositoryFolders.forEach(p => this.tryOpenRepository(p.uri.fsPath));
 		openRepositoriesToDispose.forEach(r => r.dispose());
@@ -196,6 +169,13 @@ export class Model {
 	@sequentialize
 	async tryOpenRepository(path: string): Promise<void> {
 		if (this.getRepository(path)) {
+			return;
+		}
+
+		const config = workspace.getConfiguration('git', Uri.file(path));
+		const enabled = config.get<boolean>('enabled') === true;
+
+		if (!enabled) {
 			return;
 		}
 
@@ -297,7 +277,7 @@ export class Model {
 			for (const liveRepository of this.openRepositories) {
 				const relativePath = path.relative(liveRepository.repository.root, resourcePath);
 
-				if (!/^\.\./.test(relativePath)) {
+				if (isDescendant(liveRepository.repository.root, resourcePath)) {
 					return liveRepository;
 				}
 			}
@@ -321,7 +301,11 @@ export class Model {
 	}
 
 	dispose(): void {
-		this.disable();
-		this.configurationChangeDisposable.dispose();
+		const openRepositories = [...this.openRepositories];
+		openRepositories.forEach(r => r.dispose());
+		this.openRepositories = [];
+
+		this.possibleGitRepositoryPaths.clear();
+		this.disposables = dispose(this.disposables);
 	}
 }

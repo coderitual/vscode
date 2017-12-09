@@ -21,11 +21,10 @@ import pkg from 'vs/platform/node/package';
 import { ContextViewService } from 'vs/platform/contextview/browser/contextViewService';
 import { Workbench, IWorkbenchStartedInfo } from 'vs/workbench/electron-browser/workbench';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { NullTelemetryService, configurationTelemetry, lifecycleTelemetry } from 'vs/platform/telemetry/common/telemetryUtils';
+import { NullTelemetryService, configurationTelemetry } from 'vs/platform/telemetry/common/telemetryUtils';
 import { IExperimentService, ExperimentService } from 'vs/platform/telemetry/common/experiments';
 import { ITelemetryAppenderChannel, TelemetryAppenderClient } from 'vs/platform/telemetry/common/telemetryIpc';
 import { TelemetryService, ITelemetryServiceConfig } from 'vs/platform/telemetry/common/telemetryService';
-import { IdleMonitor, UserStatus } from 'vs/platform/telemetry/browser/idleMonitor';
 import ErrorTelemetry from 'vs/platform/telemetry/browser/errorTelemetry';
 import { ElectronWindow } from 'vs/workbench/electron-browser/window';
 import { resolveWorkbenchCommonProperties } from 'vs/platform/telemetry/node/workbenchCommonProperties';
@@ -88,6 +87,7 @@ import { ITextMateService } from 'vs/workbench/services/textMate/electron-browse
 import { IBroadcastService, BroadcastService } from 'vs/platform/broadcast/electron-browser/broadcastService';
 import { HashService } from 'vs/workbench/services/hash/node/hashService';
 import { IHashService } from 'vs/workbench/services/hash/common/hashService';
+import { ILogService } from 'vs/platform/log/common/log';
 
 /**
  * Services that we require for the Shell
@@ -96,6 +96,7 @@ export interface ICoreServices {
 	contextService: IWorkspaceContextService;
 	configurationService: IConfigurationService;
 	environmentService: IEnvironmentService;
+	logService: ILogService;
 	timerService: ITimerService;
 	storageService: IStorageService;
 }
@@ -110,6 +111,7 @@ export class WorkbenchShell {
 	private storageService: IStorageService;
 	private messageService: MessageService;
 	private environmentService: IEnvironmentService;
+	private logService: ILogService;
 	private contextViewService: ContextViewService;
 	private configurationService: IConfigurationService;
 	private contextService: IWorkspaceContextService;
@@ -140,6 +142,7 @@ export class WorkbenchShell {
 		this.contextService = coreServices.contextService;
 		this.configurationService = coreServices.configurationService;
 		this.environmentService = coreServices.environmentService;
+		this.logService = coreServices.logService;
 		this.timerService = coreServices.timerService;
 		this.storageService = coreServices.storageService;
 
@@ -166,8 +169,8 @@ export class WorkbenchShell {
 			this.workbench.startup().done(startupInfos => this.onWorkbenchStarted(startupInfos, instantiationService));
 		} catch (error) {
 
-			// Print out error
-			console.error(toErrorMessage(error, true));
+			// Log it
+			this.logService.error(toErrorMessage(error, true));
 
 			// Rethrow
 			throw error;
@@ -178,7 +181,7 @@ export class WorkbenchShell {
 
 		// Handle case where workbench is not starting up properly
 		const timeoutHandle = setTimeout(() => {
-			console.warn('Workbench did not finish loading in 10 seconds, that might be a problem that should be reported.');
+			this.logService.warn('Workbench did not finish loading in 10 seconds, that might be a problem that should be reported.');
 		}, 10000);
 
 		this.lifecycleService.when(LifecyclePhase.Running).then(() => {
@@ -279,6 +282,9 @@ export class WorkbenchShell {
 		serviceCollection.set(IWorkspaceContextService, this.contextService);
 		serviceCollection.set(IConfigurationService, this.configurationService);
 		serviceCollection.set(IEnvironmentService, this.environmentService);
+		serviceCollection.set(ILogService, this.logService);
+		disposables.push(this.logService);
+
 		serviceCollection.set(ITimerService, this.timerService);
 		serviceCollection.set(IStorageService, this.storageService);
 		this.mainProcessServices.forEach((serviceIdentifier, serviceInstance) => {
@@ -325,21 +331,8 @@ export class WorkbenchShell {
 			this.telemetryService = telemetryService;
 
 			const errorTelemetry = new ErrorTelemetry(telemetryService);
-			const idleMonitor = new IdleMonitor(2 * 60 * 1000); // 2 minutes
 
-			const listener = idleMonitor.onStatusChange(status =>
-				/* __GDPR__
-					"UserIdleStart" : {}
-				*/
-				/* __GDPR__
-					"UserIdleStop" : {}
-				*/
-				this.telemetryService.publicLog(status === UserStatus.Active
-					? TelemetryService.IDLE_STOP_EVENT_NAME
-					: TelemetryService.IDLE_START_EVENT_NAME
-				));
-
-			disposables.push(telemetryService, errorTelemetry, listener, idleMonitor);
+			disposables.push(telemetryService, errorTelemetry);
 		} else {
 			this.telemetryService = NullTelemetryService;
 		}
@@ -361,7 +354,6 @@ export class WorkbenchShell {
 		this.toUnbind.push(lifecycleService.onShutdown(reason => dispose(disposables)));
 		this.toUnbind.push(lifecycleService.onShutdown(reason => saveFontInfo(this.storageService)));
 		serviceCollection.set(ILifecycleService, lifecycleService);
-		disposables.push(lifecycleTelemetry(this.telemetryService, lifecycleService));
 		this.lifecycleService = lifecycleService;
 
 		const extensionManagementChannel = getDelayedChannel<IExtensionManagementChannel>(sharedProcess.then(c => c.getChannel('extensions')));
@@ -455,8 +447,8 @@ export class WorkbenchShell {
 		this.previousErrorTime = now;
 		this.previousErrorValue = errorMsg;
 
-		// Log to console
-		console.error(errorMsg);
+		// Log it
+		this.logService.error(errorMsg);
 
 		// Show to user if friendly message provided
 		if (error && error.friendlyMessage && this.messageService) {
