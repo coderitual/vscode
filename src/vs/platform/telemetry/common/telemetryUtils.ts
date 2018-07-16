@@ -7,11 +7,12 @@
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { guessMimeTypes } from 'vs/base/common/mime';
-import paths = require('vs/base/common/paths');
+import * as paths from 'vs/base/common/paths';
 import URI from 'vs/base/common/uri';
 import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
 import { IKeybindingService, KeybindingSource } from 'vs/platform/keybinding/common/keybinding';
 import { ITelemetryService, ITelemetryInfo, ITelemetryData } from 'vs/platform/telemetry/common/telemetry';
+import { ILogService } from 'vs/platform/log/common/log';
 
 export const NullTelemetryService = new class implements ITelemetryService {
 	_serviceBrand: undefined;
@@ -30,19 +31,44 @@ export const NullTelemetryService = new class implements ITelemetryService {
 
 export interface ITelemetryAppender {
 	log(eventName: string, data: any): void;
+	dispose(): TPromise<any>;
 }
 
 export function combinedAppender(...appenders: ITelemetryAppender[]): ITelemetryAppender {
-	return { log: (e, d) => appenders.forEach(a => a.log(e, d)) };
+	return {
+		log: (e, d) => appenders.forEach(a => a.log(e, d)),
+		dispose: () => TPromise.join(appenders.map(a => a.dispose()))
+	};
 }
 
-export const NullAppender: ITelemetryAppender = { log: () => null };
+export const NullAppender: ITelemetryAppender = { log: () => null, dispose: () => TPromise.as(null) };
+
+
+export class LogAppender implements ITelemetryAppender {
+
+	private commonPropertiesRegex = /^sessionID$|^version$|^timestamp$|^commitHash$|^common\./;
+	constructor(@ILogService private readonly _logService: ILogService) { }
+
+	dispose(): TPromise<any> {
+		return TPromise.as(undefined);
+	}
+
+	log(eventName: string, data: any): void {
+		const strippedData = {};
+		Object.keys(data).forEach(key => {
+			if (!this.commonPropertiesRegex.test(key)) {
+				strippedData[key] = data[key];
+			}
+		});
+		this._logService.trace(`telemetry/${eventName}`, strippedData);
+	}
+}
 
 /* __GDPR__FRAGMENT__
 	"URIDescriptor" : {
 		"mimeType" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
 		"ext": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
-		"path": { "classification": "CustomerContent", "purpose": "FeatureInsight" }
+		"path": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
 	}
 */
 export interface URIDescriptor {
@@ -75,6 +101,7 @@ const configurationValueWhitelist = [
 	'editor.roundedSelection',
 	'editor.scrollBeyondLastLine',
 	'editor.minimap.enabled',
+	'editor.minimap.side',
 	'editor.minimap.renderCharacters',
 	'editor.minimap.maxColumn',
 	'editor.find.seedSearchStringFromSelection',
@@ -97,6 +124,7 @@ const configurationValueWhitelist = [
 	'editor.snippetSuggestions',
 	'editor.emptySelectionClipboard',
 	'editor.wordBasedSuggestions',
+	'editor.suggestSelection',
 	'editor.suggestFontSize',
 	'editor.suggestLineHeight',
 	'editor.selectionHighlight',
@@ -134,7 +162,6 @@ const configurationValueWhitelist = [
 	'workbench.sideBar.location',
 	'window.openFilesInNewWindow',
 	'javascript.validate.enable',
-	'window.reopenFolders',
 	'window.restoreWindows',
 	'extensions.autoUpdate',
 	'files.eol',
@@ -154,6 +181,8 @@ const configurationValueWhitelist = [
 	'php.validate.run',
 	'workbench.welcome.enabled',
 	'workbench.startupEditor',
+	'breadcrumbs.enabled',
+	'breadcrumbs.useQuickPick',
 ];
 
 export function configurationTelemetry(telemetryService: ITelemetryService, configurationService: IConfigurationService): IDisposable {

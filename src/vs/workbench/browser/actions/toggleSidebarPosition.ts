@@ -5,7 +5,7 @@
 'use strict';
 
 import { TPromise } from 'vs/base/common/winjs.base';
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { Action } from 'vs/base/common/actions';
 import { SyncActionDescriptor } from 'vs/platform/actions/common/actions';
@@ -15,8 +15,8 @@ import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configur
 
 export class ToggleSidebarPositionAction extends Action {
 
-	public static readonly ID = 'workbench.action.toggleSidebarPosition';
-	public static readonly LABEL = nls.localize('toggleLocation', "Toggle Side Bar Location");
+	static readonly ID = 'workbench.action.toggleSidebarPosition';
+	static readonly LABEL = nls.localize('toggleSidebarPosition', "Toggle Side Bar Position");
 
 	private static readonly sidebarPositionConfigurationKey = 'workbench.sideBar.location';
 
@@ -31,7 +31,7 @@ export class ToggleSidebarPositionAction extends Action {
 		this.enabled = !!this.partService && !!this.configurationService;
 	}
 
-	public run(): TPromise<any> {
+	run(): TPromise<any> {
 		const position = this.partService.getSideBarPosition();
 		const newPositionValue = (position === Position.LEFT) ? 'right' : 'left';
 
@@ -40,4 +40,4 @@ export class ToggleSidebarPositionAction extends Action {
 }
 
 const registry = Registry.as<IWorkbenchActionRegistry>(Extensions.WorkbenchActions);
-registry.registerWorkbenchAction(new SyncActionDescriptor(ToggleSidebarPositionAction, ToggleSidebarPositionAction.ID, ToggleSidebarPositionAction.LABEL), 'View: Toggle Side Bar Location', nls.localize('view', "View"));
+registry.registerWorkbenchAction(new SyncActionDescriptor(ToggleSidebarPositionAction, ToggleSidebarPositionAction.ID, ToggleSidebarPositionAction.LABEL), 'View: Toggle Side Bar Position', nls.localize('view', "View"));

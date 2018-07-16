@@ -8,11 +8,10 @@
 import * as assert from 'assert';
 import { ExtHostCommands } from 'vs/workbench/api/node/extHostCommands';
 import { MainThreadCommandsShape } from 'vs/workbench/api/node/extHost.protocol';
-import { TPromise } from 'vs/base/common/winjs.base';
 import { CommandsRegistry } from 'vs/platform/commands/common/commands';
-import { OneGetThreadService } from './testThreadService';
+import { SingleProxyRPCProtocol } from './testRPCProtocol';
 import { mock } from 'vs/workbench/test/electron-browser/api/mock';
-import { NoopLogService } from 'vs/platform/log/common/log';
+import { NullLogService } from 'vs/platform/log/common/log';
 
 suite('ExtHostCommands', function () {
 
@@ -21,17 +20,16 @@ suite('ExtHostCommands', function () {
 		let lastUnregister: string;
 
 		const shape = new class extends mock<MainThreadCommandsShape>() {
-			$registerCommand(id: string): TPromise<any> {
-				return undefined;
+			$registerCommand(id: string): void {
+				//
 			}
-			$unregisterCommand(id: string): TPromise<any> {
+			$unregisterCommand(id: string): void {
 				lastUnregister = id;
-				return undefined;
 			}
 		};
 
-		const commands = new ExtHostCommands(OneGetThreadService(shape), undefined, new NoopLogService());
-		commands.registerCommand('foo', (): any => { }).dispose();
+		const commands = new ExtHostCommands(SingleProxyRPCProtocol(shape), undefined, new NullLogService());
+		commands.registerCommand(true, 'foo', (): any => { }).dispose();
 		assert.equal(lastUnregister, 'foo');
 		assert.equal(CommandsRegistry.getCommand('foo'), undefined);
 
@@ -42,17 +40,16 @@ suite('ExtHostCommands', function () {
 		let unregisterCounter = 0;
 
 		const shape = new class extends mock<MainThreadCommandsShape>() {
-			$registerCommand(id: string): TPromise<any> {
-				return undefined;
+			$registerCommand(id: string): void {
+				//
 			}
-			$unregisterCommand(id: string): TPromise<any> {
+			$unregisterCommand(id: string): void {
 				unregisterCounter += 1;
-				return undefined;
 			}
 		};
 
-		const commands = new ExtHostCommands(OneGetThreadService(shape), undefined, new NoopLogService());
-		const reg = commands.registerCommand('foo', (): any => { });
+		const commands = new ExtHostCommands(SingleProxyRPCProtocol(shape), undefined, new NullLogService());
+		const reg = commands.registerCommand(true, 'foo', (): any => { });
 		reg.dispose();
 		reg.dispose();
 		reg.dispose();

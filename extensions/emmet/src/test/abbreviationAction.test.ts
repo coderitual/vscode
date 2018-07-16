@@ -5,44 +5,12 @@
 
 import 'mocha';
 import * as assert from 'assert';
-import { Selection, workspace, CompletionList, CancellationTokenSource, Position } from 'vscode';
+import { Selection, workspace, CompletionList, CancellationTokenSource, CompletionTriggerKind, ConfigurationTarget } from 'vscode';
 import { withRandomFileEditor, closeAllEditors } from './testUtils';
-import { expandEmmetAbbreviation, wrapWithAbbreviation, wrapIndividualLinesWithAbbreviation } from '../abbreviationActions';
+import { expandEmmetAbbreviation } from '../abbreviationActions';
 import { DefaultCompletionItemProvider } from '../defaultCompletionProvider';
 
 const completionProvider = new DefaultCompletionItemProvider();
-const cssContents = `
-.boo {
-	margin: 20px 10px;
-	m10
-	background-image: url('tryme.png');
-	m10
-}
-
-.boo .hoo {
-	margin: 10px;
-	ind
-}
-`;
-
-const scssContents = `
-.boo {
-	margin: 10px;
-	p10
-	.hoo {
-		p20
-	}
-}
-@include b(alert) {
-
-	margin: 10px;
-	p30
-
-	@include b(alert) {
-		p40
-	}
-}
-`;
 
 const htmlContents = `
 <body class="header">
@@ -57,67 +25,27 @@ const htmlContents = `
 	</ul>
 	<style>
 		.boo {
-			m10
+			display: dn; m10
 		}
 	</style>
 	<span></span>
 	(ul>li.item$)*2
 	(ul>li.item$)*2+span
 	(div>dl>(dt+dd)*2)
+	<script type="text/html">
+		span.hello
+	</script>
+	<script type="text/javascript">
+		span.hello
+	</script>
 </body>
 `;
 
-const htmlContentsForWrapTests = `
-	<ul class="nav main">
-		<li class="item1">img</li>
-		<li class="item2">$hithere</li>
-	</ul>
-`;
-
-const wrapBlockElementExpected = `
-	<ul class="nav main">
-		<div>
-			<li class="item1">img</li>
-		</div>
-		<div>
-			<li class="item2">$hithere</li>
-		</div>
-	</ul>
-`;
-
-const wrapInlineElementExpected = `
-	<ul class="nav main">
-		<span><li class="item1">img</li></span>
-		<span><li class="item2">$hithere</li></span>
-	</ul>
-`;
-
-const wrapSnippetExpected = `
-	<ul class="nav main">
-		<a href=""><li class="item1">img</li></a>
-		<a href=""><li class="item2">$hithere</li></a>
-	</ul>
-`;
-
-const wrapMultiLineAbbrExpected = `
-	<ul class="nav main">
-		<ul>
-			<li>
-				<li class="item1">img</li>
-			</li>
-		</ul>
-		<ul>
-			<li>
-				<li class="item2">$hithere</li>
-			</li>
-		</ul>
-	</ul>
-`;
-
 suite('Tests for Expand Abbreviations (HTML)', () => {
+	const oldValueForExcludeLanguages = workspace.getConfiguration('emmet').inspect('excludeLanguages');
 	teardown(() => {
-		// Reset config and close all editors
-		return workspace.getConfiguration('emmet').update('excludeLanguages', []).then(closeAllEditors);
+		// close all editors
+		return closeAllEditors;
 	});
 
 	test('Expand snippets (HTML)', () => {
@@ -142,7 +70,7 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 		return withRandomFileEditor('img', 'html', (editor, doc) => {
 			editor.selection = new Selection(0, 3, 0, 3);
 			const cancelSrc = new CancellationTokenSource();
-			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
 			if (!completionPromise) {
 				assert.equal(!completionPromise, false, `Got unexpected undefined instead of a completion promise`);
 				return Promise.resolve();
@@ -244,7 +172,7 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
 			editor.selection = new Selection(2, 4, 2, 4);
 			const cancelSrc = new CancellationTokenSource();
-			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
 			assert.equal(!completionPromise, true, `Got unexpected comapletion promise instead of undefined`);
 			return Promise.resolve();
 		});
@@ -264,7 +192,7 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
 			editor.selection = new Selection(9, 8, 9, 8);
 			const cancelSrc = new CancellationTokenSource();
-			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
 			assert.equal(!completionPromise, true, `Got unexpected comapletion promise instead of undefined`);
 			return Promise.resolve();
 		});
@@ -286,7 +214,7 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 		return withRandomFileEditor(fileContents, 'html', (editor, doc) => {
 			editor.selection = new Selection(0, 6, 0, 6);
 			const cancelSrc = new CancellationTokenSource();
-			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
 			assert.equal(!completionPromise, true, `Got unexpected comapletion promise instead of undefined`);
 			return Promise.resolve();
 		});
@@ -294,7 +222,7 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 
 	test('Expand css when inside style tag (HTML)', () => {
 		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
-			editor.selection = new Selection(13, 3, 13, 6);
+			editor.selection = new Selection(13, 16, 13, 19);
 			let expandPromise = expandEmmetAbbreviation({ language: 'css' });
 			if (!expandPromise) {
 				return Promise.resolve();
@@ -311,9 +239,9 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 		const expandedText = 'margin: 10px;';
 
 		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
-			editor.selection = new Selection(13, 3, 13, 6);
+			editor.selection = new Selection(13, 16, 13, 19);
 			const cancelSrc = new CancellationTokenSource();
-			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
 			if (!completionPromise) {
 				assert.equal(1, 2, `Problem with expanding m10`);
 				return Promise.resolve();
@@ -333,305 +261,157 @@ suite('Tests for Expand Abbreviations (HTML)', () => {
 		});
 	});
 
-	test('No expanding when html is excluded in the settings', () => {
-		return workspace.getConfiguration('emmet').update('excludeLanguages', ['html']).then(() => {
-			return testExpandAbbreviation('html', new Selection(9, 6, 9, 6), '', '', true).then(() => {
-				return workspace.getConfiguration('emmet').update('excludeLanguages', []);
-			});
-		});
-	});
-
-	test('No expanding when html is excluded in the settings in completion list', () => {
-		return workspace.getConfiguration('emmet').update('excludeLanguages', ['html']).then(() => {
-			return testHtmlCompletionProvider(new Selection(9, 6, 9, 6), '', '', true).then(() => {
-				return workspace.getConfiguration('emmet').update('excludeLanguages', []);
-			});
-		});
-	});
-
-	test('No expanding when php (mapped syntax) is excluded in the settings', () => {
-		return workspace.getConfiguration('emmet').update('excludeLanguages', ['php']).then(() => {
-			return testExpandAbbreviation('php', new Selection(9, 6, 9, 6), '', '', true).then(() => {
-				return workspace.getConfiguration('emmet').update('excludeLanguages', []);
-			});
-		});
-	});
-
-
-});
-
-suite('Tests for Expand Abbreviations (CSS)', () => {
-	teardown(closeAllEditors);
-
-	test('Expand abbreviation (CSS)', () => {
-		return withRandomFileEditor(cssContents, 'css', (editor, doc) => {
-			editor.selections = [new Selection(3, 1, 3, 4), new Selection(5, 1, 5, 4)];
+	test('No expanding text inside style tag if position is not for property name (HTML)', () => {
+		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
+			editor.selection = new Selection(13, 14, 13, 14);
 			return expandEmmetAbbreviation(null).then(() => {
-				assert.equal(editor.document.getText(), cssContents.replace(/m10/g, 'margin: 10px;'));
+				assert.equal(editor.document.getText(), htmlContents);
 				return Promise.resolve();
 			});
 		});
 	});
 
-	test('Expand abbreviation in completion list (CSS)', () => {
-		const abbreviation = 'm10';
-		const expandedText = 'margin: 10px;';
-
-		return withRandomFileEditor(cssContents, 'css', (editor, doc) => {
-			editor.selection = new Selection(3, 1, 3, 4);
+	test('No expanding text in completion list inside style tag if position is not for property name (HTML)', () => {
+		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
+			editor.selection = new Selection(13, 14, 13, 14);
 			const cancelSrc = new CancellationTokenSource();
-			const completionPromise1 = completionProvider.provideCompletionItems(editor.document, new Position(3, 4), cancelSrc.token);
-			const completionPromise2 = completionProvider.provideCompletionItems(editor.document, new Position(5, 4), cancelSrc.token);
-			if (!completionPromise1 || !completionPromise2) {
-				assert.equal(1, 2, `Problem with expanding m10`);
-				return Promise.resolve();
-			}
-
-			const callBack = (completionList: CompletionList) => {
-				if (!completionList.items || !completionList.items.length) {
-					assert.equal(1, 2, `Problem with expanding m10`);
-					return;
-				}
-				const emmetCompletionItem = completionList.items[0];
-				assert.equal(emmetCompletionItem.label, expandedText, `Label of completion item doesnt match.`);
-				assert.equal((<string>emmetCompletionItem.documentation || '').replace(/\|/g, ''), expandedText, `Docs of completion item doesnt match.`);
-				assert.equal(emmetCompletionItem.filterText, abbreviation, `FilterText of completion item doesnt match.`);
-			};
-
-			return Promise.all<CompletionList>([completionPromise1, completionPromise2]).then(([result1, result2]) => {
-				callBack(result1);
-				callBack(result2);
-				return Promise.resolve();
-			});
-		});
-	});
-
-	test('Expand abbreviation (SCSS)', () => {
-		return withRandomFileEditor(scssContents, 'scss', (editor, doc) => {
-			editor.selections = [
-				new Selection(3, 4, 3, 4),
-				new Selection(5, 5, 5, 5),
-				new Selection(11, 4, 11, 4),
-				new Selection(14, 5, 14, 5)
-			];
-			return expandEmmetAbbreviation(null).then(() => {
-				assert.equal(editor.document.getText(), scssContents.replace(/p(\d\d)/g, 'padding: $1px;'));
-				return Promise.resolve();
-			});
-		});
-	});
-
-	test('Expand abbreviation in completion list (SCSS)', () => {
-
-		return withRandomFileEditor(scssContents, 'scss', (editor, doc) => {
-			editor.selection = new Selection(3, 4, 3, 4);
-			const cancelSrc = new CancellationTokenSource();
-			const completionPromise1 = completionProvider.provideCompletionItems(editor.document, new Position(3, 4), cancelSrc.token);
-			const completionPromise2 = completionProvider.provideCompletionItems(editor.document, new Position(5, 5), cancelSrc.token);
-			const completionPromise3 = completionProvider.provideCompletionItems(editor.document, new Position(11, 4), cancelSrc.token);
-			const completionPromise4 = completionProvider.provideCompletionItems(editor.document, new Position(14, 5), cancelSrc.token);
-			if (!completionPromise1 || !completionPromise2 || !completionPromise3 || !completionPromise4) {
-				assert.equal(1, 2, `Problem with expanding padding abbreviations`);
-				return Promise.resolve();
-			}
-
-			const callBack = (completionList: CompletionList, abbreviation, expandedText) => {
-				if (!completionList.items || !completionList.items.length) {
-					assert.equal(1, 2, `Problem with expanding m10`);
-					return;
-				}
-				const emmetCompletionItem = completionList.items[0];
-				assert.equal(emmetCompletionItem.label, expandedText, `Label of completion item doesnt match.`);
-				assert.equal((<string>emmetCompletionItem.documentation || '').replace(/\|/g, ''), expandedText, `Docs of completion item doesnt match.`);
-				assert.equal(emmetCompletionItem.filterText, abbreviation, `FilterText of completion item doesnt match.`);
-			};
-
-			return Promise.all<CompletionList>([completionPromise1, completionPromise2, completionPromise3, completionPromise4]).then(([result1, result2, result3, result4]) => {
-				callBack(result1, 'p10', 'padding: 10px;');
-				callBack(result2, 'p20', 'padding: 20px;');
-				callBack(result3, 'p30', 'padding: 30px;');
-				callBack(result4, 'p40', 'padding: 40px;');
-				return Promise.resolve();
-			});
-		});
-	});
-
-
-	test('Invalid locations for abbreviations in scss', () => {
-		const scssContentsNoExpand = `
-m10
-		.boo {
-			margin: 10px;
-			.hoo {
-				background:
-			}
-		}
-		`;
-
-		return withRandomFileEditor(scssContentsNoExpand, 'scss', (editor, doc) => {
-			editor.selections = [
-				new Selection(1, 3, 1, 3), // outside rule
-				new Selection(5, 15, 5, 15) // in the value part of property value
-			];
-			return expandEmmetAbbreviation(null).then(() => {
-				assert.equal(editor.document.getText(), scssContentsNoExpand);
-				return Promise.resolve();
-			});
-		});
-	});
-
-	test('Invalid locations for abbreviations in scss in completion list', () => {
-		const scssContentsNoExpand = `
-m10
-		.boo {
-			margin: 10px;
-			.hoo {
-				background:
-			}
-		}
-		`;
-
-		return withRandomFileEditor(scssContentsNoExpand, 'scss', (editor, doc) => {
-			editor.selection = new Selection(1, 3, 1, 3); // outside rule
-			const cancelSrc = new CancellationTokenSource();
-			let completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
-			if (completionPromise) {
-				assert.equal(1, 2, `m10 gets expanded in invalid location (outside rule)`);
-			}
-
-			editor.selection = new Selection(5, 15, 5, 15); // in the value part of property value
-			completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
-			if (completionPromise) {
-				return completionPromise.then((completionList: CompletionList) => {
-					if (completionList && completionList.items && completionList.items.length > 0) {
-						assert.equal(1, 2, `m10 gets expanded in invalid location (n the value part of property value)`);
-					}
-					return Promise.resolve();
-				});
-			}
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
+			assert.equal(!completionPromise, true, `Got unexpected comapletion promise instead of undefined`);
 			return Promise.resolve();
 		});
 	});
 
-});
-
-suite('Tests for Wrap with Abbreviations', () => {
-	teardown(closeAllEditors);
-
-	const multiCursors = [new Selection(2, 6, 2, 6), new Selection(3, 6, 3, 6)];
-	const multiCursorsWithSelection = [new Selection(2, 2, 2, 28), new Selection(3, 2, 3, 33)];
-	const multiCursorsWithFullLineSelection = [new Selection(2, 0, 2, 28), new Selection(3, 0, 3, 33)];
-
-
-	test('Wrap with block element using multi cursor', () => {
-		return testWrapWithAbbreviation(multiCursors, 'div', wrapBlockElementExpected);
-	});
-
-	test('Wrap with inline element using multi cursor', () => {
-		return testWrapWithAbbreviation(multiCursors, 'span', wrapInlineElementExpected);
-	});
-
-	test('Wrap with snippet using multi cursor', () => {
-		return testWrapWithAbbreviation(multiCursors, 'a', wrapSnippetExpected);
-	});
-
-	test('Wrap with multi line abbreviation using multi cursor', () => {
-		return testWrapWithAbbreviation(multiCursors, 'ul>li', wrapMultiLineAbbrExpected);
-	});
-
-	test('Wrap with block element using multi cursor selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithSelection, 'div', wrapBlockElementExpected);
-	});
-
-	test('Wrap with inline element using multi cursor selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithSelection, 'span', wrapInlineElementExpected);
-	});
-
-	test('Wrap with snippet using multi cursor selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithSelection, 'a', wrapSnippetExpected);
-	});
-
-	test('Wrap with multi line abbreviation using multi cursor selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithSelection, 'ul>li', wrapMultiLineAbbrExpected);
-	});
-
-	test('Wrap with block element using multi cursor full line selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithFullLineSelection, 'div', wrapBlockElementExpected);
-	});
-
-	test('Wrap with inline element using multi cursor full line selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithFullLineSelection, 'span', wrapInlineElementExpected);
-	});
-
-	test('Wrap with snippet using multi cursor full line selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithFullLineSelection, 'a', wrapSnippetExpected);
-	});
-
-	test('Wrap with multi line abbreviation using multi cursor full line selection', () => {
-		return testWrapWithAbbreviation(multiCursorsWithFullLineSelection, 'ul>li', wrapMultiLineAbbrExpected);
-	});
-
-	test('Wrap individual lines with abbreviation', () => {
-		const contents = `
-	<ul class="nav main">
-		<li class="item1">img</li>
-		<li class="item2">hi.there</li>
-	</ul>
-`;
-		const wrapIndividualLinesExpected = `
-	<ul class="nav main">
-		<ul>
-			<li class="hello1"><li class="item1">img</li></li>
-			<li class="hello2"><li class="item2">hi.there</li></li>
-		</ul>
-	</ul>
-`;
-		return withRandomFileEditor(contents, 'html', (editor, doc) => {
-			editor.selections = [new Selection(2, 2, 3, 33)];
-			const promise = wrapIndividualLinesWithAbbreviation({ abbreviation: 'ul>li.hello$*' });
-			if (!promise) {
-				assert.equal(1, 2, 'Wrap Individual Lines with Abbreviation returned udnefined.');
+	test('Expand css when inside style attribute (HTML)', () => {
+		const styleAttributeContent = '<div style="m10" class="hello"></div>';
+		return withRandomFileEditor(styleAttributeContent, 'html', (editor, doc) => {
+			editor.selection = new Selection(0, 15, 0, 15);
+			let expandPromise = expandEmmetAbbreviation(null);
+			if (!expandPromise) {
 				return Promise.resolve();
 			}
-			return promise.then(() => {
-				assert.equal(editor.document.getText(), wrapIndividualLinesExpected);
+			return expandPromise.then(() => {
+				assert.equal(editor.document.getText(), styleAttributeContent.replace('m10', 'margin: 10px;'));
 				return Promise.resolve();
 			});
 		});
 	});
 
-	test('Wrap individual lines with abbreviation and trim', () => {
-		const contents = `
-		<ul class="nav main">
-			• lorem ipsum
-			• lorem ipsum
-		</ul>
-	`;
-		const wrapIndividualLinesExpected = `
-		<ul class="nav main">
-			<ul>
-				<li class="hello1">lorem ipsum</li>
-				<li class="hello2">lorem ipsum</li>
-			</ul>
-		</ul>
-	`;
-		return withRandomFileEditor(contents, 'html', (editor, doc) => {
-			editor.selections = [new Selection(2, 3, 3, 16)];
-			const promise = wrapIndividualLinesWithAbbreviation({ abbreviation: 'ul>li.hello$*|t' });
-			if (!promise) {
-				assert.equal(1, 2, 'Wrap Individual Lines with Abbreviation returned udnefined.');
+	test('Expand css when inside style attribute in completion list (HTML)', () => {
+		const abbreviation = 'm10';
+		const expandedText = 'margin: 10px;';
+
+		return withRandomFileEditor('<div style="m10" class="hello"></div>', 'html', (editor, doc) => {
+			editor.selection = new Selection(0, 15, 0, 15);
+			const cancelSrc = new CancellationTokenSource();
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
+			if (!completionPromise) {
+				assert.equal(1, 2, `Problem with expanding m10`);
 				return Promise.resolve();
 			}
 
-			return promise.then(() => {
-				assert.equal(editor.document.getText(), wrapIndividualLinesExpected);
+			return completionPromise.then((completionList: CompletionList) => {
+				if (!completionList.items || !completionList.items.length) {
+					assert.equal(1, 2, `Problem with expanding m10`);
+					return Promise.resolve();
+				}
+				const emmetCompletionItem = completionList.items[0];
+				assert.equal(emmetCompletionItem.label, expandedText, `Label of completion item doesnt match.`);
+				assert.equal((<string>emmetCompletionItem.documentation || '').replace(/\|/g, ''), expandedText, `Docs of completion item doesnt match.`);
+				assert.equal(emmetCompletionItem.filterText, abbreviation, `FilterText of completion item doesnt match.`);
 				return Promise.resolve();
 			});
 		});
 	});
+
+	test('Expand html when inside script tag with html type (HTML)', () => {
+		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
+			editor.selection = new Selection(21, 12, 21, 12);
+			let expandPromise = expandEmmetAbbreviation(null);
+			if (!expandPromise) {
+				return Promise.resolve();
+			}
+			return expandPromise.then(() => {
+				assert.equal(editor.document.getText(), htmlContents.replace('span.hello', '<span class="hello"></span>'));
+				return Promise.resolve();
+			});
+		});
+	});
+
+	test('Expand html when inside script tag with html type (HTML)', () => {
+		const abbreviation = 'span.hello';
+		const expandedText = '<span class="hello"></span>';
+
+		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
+			editor.selection = new Selection(21, 12, 21, 12);
+			const cancelSrc = new CancellationTokenSource();
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
+			if (!completionPromise) {
+				assert.equal(1, 2, `Problem with expanding span.hello`);
+				return Promise.resolve();
+			}
+
+			return completionPromise.then((completionList: CompletionList) => {
+				if (!completionList.items || !completionList.items.length) {
+					assert.equal(1, 2, `Problem with expanding span.hello`);
+					return Promise.resolve();
+				}
+				const emmetCompletionItem = completionList.items[0];
+				assert.equal(emmetCompletionItem.label, abbreviation, `Label of completion item doesnt match.`);
+				assert.equal((<string>emmetCompletionItem.documentation || '').replace(/\|/g, ''), expandedText, `Docs of completion item doesnt match.`);
+				return Promise.resolve();
+			});
+		});
+	});
+
+	test('No expanding text inside script tag with javascript type (HTML)', () => {
+		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
+			editor.selection = new Selection(24, 12, 24, 12);
+			return expandEmmetAbbreviation(null).then(() => {
+				assert.equal(editor.document.getText(), htmlContents);
+				return Promise.resolve();
+			});
+		});
+	});
+
+	test('No expanding text in completion list inside script tag with javascript type (HTML)', () => {
+		return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
+			editor.selection = new Selection(24, 12, 24, 12);
+			const cancelSrc = new CancellationTokenSource();
+			const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
+			assert.equal(!completionPromise, true, `Got unexpected comapletion promise instead of undefined`);
+			return Promise.resolve();
+		});
+	});
+
+	// test('No expanding when html is excluded in the settings', () => {
+	// 	return workspace.getConfiguration('emmet').update('excludeLanguages', ['html'], ConfigurationTarget.Global).then(() => {
+	// 		return testExpandAbbreviation('html', new Selection(9, 6, 9, 6), '', '', true).then(() => {
+	// 			return workspace.getConfiguration('emmet').update('excludeLanguages', oldValueForExcludeLanguages ? oldValueForExcludeLanguages.globalValue : undefined, ConfigurationTarget.Global);
+	// 		});
+	// 	});
+	// });
+
+	test('No expanding when html is excluded in the settings in completion list', () => {
+		return workspace.getConfiguration('emmet').update('excludeLanguages', ['html'], ConfigurationTarget.Global).then(() => {
+			return testHtmlCompletionProvider(new Selection(9, 6, 9, 6), '', '', true).then(() => {
+				return workspace.getConfiguration('emmet').update('excludeLanguages', oldValueForExcludeLanguages ? oldValueForExcludeLanguages.globalValue : undefined, ConfigurationTarget.Global);
+			});
+		});
+	});
+
+	// test('No expanding when php (mapped syntax) is excluded in the settings', () => {
+	// 	return workspace.getConfiguration('emmet').update('excludeLanguages', ['php'], ConfigurationTarget.Global).then(() => {
+	// 		return testExpandAbbreviation('php', new Selection(9, 6, 9, 6), '', '', true).then(() => {
+	// 			return workspace.getConfiguration('emmet').update('excludeLanguages', oldValueForExcludeLanguages ? oldValueForExcludeLanguages.globalValue : undefined, ConfigurationTarget.Global);
+	// 		});
+	// 	});
+	// });
+
+
 });
 
 suite('Tests for jsx, xml and xsl', () => {
+	const oldValueForSyntaxProfiles = workspace.getConfiguration('emmet').inspect('syntaxProfiles');
 	teardown(closeAllEditors);
 
 	test('Expand abbreviation with className instead of class in jsx', () => {
@@ -654,6 +434,18 @@ suite('Tests for jsx, xml and xsl', () => {
 		});
 	});
 
+	test('Expand abbreviation with single quotes for jsx', () => {
+		return workspace.getConfiguration('emmet').update('syntaxProfiles', {jsx: {"attr_quotes": "single"}}, ConfigurationTarget.Global).then(() => {
+			return withRandomFileEditor('img', 'javascriptreact', (editor, doc) => {
+				editor.selection = new Selection(0, 6, 0, 6);
+				return expandEmmetAbbreviation({ language: 'javascriptreact' }).then(() => {
+					assert.equal(editor.document.getText(), '<img src=\'\' alt=\'\'/>');
+					return workspace.getConfiguration('emmet').update('syntaxProfiles', oldValueForSyntaxProfiles ? oldValueForSyntaxProfiles.globalValue : undefined, ConfigurationTarget.Global);
+				});
+			});
+		});
+	});
+
 	test('Expand abbreviation with self closing tags for xml', () => {
 		return withRandomFileEditor('img', 'xml', (editor, doc) => {
 			editor.selection = new Selection(0, 6, 0, 6);
@@ -672,6 +464,22 @@ suite('Tests for jsx, xml and xsl', () => {
 				return Promise.resolve();
 			});
 		});
+	});
+
+	test('No expanding text inside open tag in completion list (jsx)', () => {
+		return testNoCompletion('jsx', htmlContents, new Selection(2, 4, 2, 4));
+	});
+
+	test('No expanding tag that is opened, but not closed in completion list (jsx)', () => {
+		return testNoCompletion('jsx', htmlContents, new Selection(9, 6, 9, 6));
+	});
+
+	test('No expanding text inside open tag when there is no closing tag in completion list (jsx)', () => {
+		return testNoCompletion('jsx', htmlContents, new Selection(9, 8, 9, 8));
+	});
+
+	test('No expanding text in completion list inside open tag when there is no closing tag when there is no parent node (jsx)', () => {
+		return testNoCompletion('jsx', '<img s', new Selection(0, 6, 0, 6));
 	});
 
 });
@@ -697,7 +505,7 @@ function testHtmlCompletionProvider(selection: Selection, abbreviation: string, 
 	return withRandomFileEditor(htmlContents, 'html', (editor, doc) => {
 		editor.selection = selection;
 		const cancelSrc = new CancellationTokenSource();
-		const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token);
+		const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
 		if (!completionPromise) {
 			if (!shouldFail) {
 				assert.equal(1, 2, `Problem with expanding ${abbreviation} to ${expandedText}`);
@@ -720,18 +528,12 @@ function testHtmlCompletionProvider(selection: Selection, abbreviation: string, 
 	});
 }
 
-function testWrapWithAbbreviation(selections: Selection[], abbreviation: string, expectedContents: string): Thenable<any> {
-	return withRandomFileEditor(htmlContentsForWrapTests, 'html', (editor, doc) => {
-		editor.selections = selections;
-		const promise = wrapWithAbbreviation({ abbreviation });
-		if (!promise) {
-			assert.equal(1, 2, 'Wrap  with Abbreviation returned udnefined.');
-			return Promise.resolve();
-		}
-
-		return promise.then(() => {
-			assert.equal(editor.document.getText(), expectedContents);
-			return Promise.resolve();
-		});
+function testNoCompletion(syntax: string, fileContents: string, selection: Selection): Thenable<any> {
+	return withRandomFileEditor(fileContents, syntax, (editor, doc) => {
+		editor.selection = selection;
+		const cancelSrc = new CancellationTokenSource();
+		const completionPromise = completionProvider.provideCompletionItems(editor.document, editor.selection.active, cancelSrc.token, { triggerKind: CompletionTriggerKind.Invoke });
+		assert.equal(!completionPromise, true, `Got unexpected comapletion promise instead of undefined`);
+		return Promise.resolve();
 	});
 }

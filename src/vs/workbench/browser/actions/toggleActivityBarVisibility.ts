@@ -5,7 +5,7 @@
 'use strict';
 
 import { TPromise } from 'vs/base/common/winjs.base';
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { Action } from 'vs/base/common/actions';
 import { SyncActionDescriptor } from 'vs/platform/actions/common/actions';
@@ -15,8 +15,8 @@ import { IPartService, Parts } from 'vs/workbench/services/part/common/partServi
 
 export class ToggleActivityBarVisibilityAction extends Action {
 
-	public static readonly ID = 'workbench.action.toggleActivityBarVisibility';
-	public static readonly LABEL = nls.localize('toggleActivityBar', "Toggle Activity Bar Visibility");
+	static readonly ID = 'workbench.action.toggleActivityBarVisibility';
+	static readonly LABEL = nls.localize('toggleActivityBar', "Toggle Activity Bar Visibility");
 
 	private static readonly activityBarVisibleKey = 'workbench.activityBar.visible';
 
@@ -31,7 +31,7 @@ export class ToggleActivityBarVisibilityAction extends Action {
 		this.enabled = !!this.partService;
 	}
 
-	public run(): TPromise<any> {
+	run(): TPromise<any> {
 		const visibility = this.partService.isVisible(Parts.ACTIVITYBAR_PART);
 		const newVisibilityValue = !visibility;
 

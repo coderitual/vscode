@@ -271,6 +271,7 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 		return this._visibleLines.onTokensChanged(e);
 	}
 	public onZonesChanged(e: viewEvents.ViewZonesChangedEvent): boolean {
+		this._context.viewLayout.onMaxLineWidthChanged(this._maxLineWidth);
 		return this._visibleLines.onZonesChanged(e);
 	}
 	public onThemeChanged(e: viewEvents.ViewThemeChangedEvent): boolean {
@@ -454,6 +455,10 @@ export class ViewLines extends ViewPart implements IVisibleLinesHost<ViewLine>, 
 	}
 
 	// --- implementation
+
+	public updateLineWidths(): void {
+		this._updateLineWidths(false);
+	}
 
 	/**
 	 * Updates the max line width if it is fast to compute.

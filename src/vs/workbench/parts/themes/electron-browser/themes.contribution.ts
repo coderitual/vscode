@@ -21,14 +21,16 @@ import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
 import { Delayer } from 'vs/base/common/async';
 import { IWorkspaceConfigurationService } from 'vs/workbench/services/configuration/common/configuration';
 import { IColorRegistry, Extensions as ColorRegistryExtensions } from 'vs/platform/theme/common/colorRegistry';
-import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { Color } from 'vs/base/common/color';
 import { ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
 import { LIGHT, DARK, HIGH_CONTRAST } from 'vs/platform/theme/common/themeService';
+import { schemaId } from 'vs/workbench/services/themes/common/colorThemeSchema';
+import { onUnexpectedError } from 'vs/base/common/errors';
 
 export class SelectColorThemeAction extends Action {
 
-	static ID = 'workbench.action.selectTheme';
+	static readonly ID = 'workbench.action.selectTheme';
 	static LABEL = localize('selectTheme.label', "Color Theme");
 
 	constructor(
@@ -66,6 +68,7 @@ export class SelectColorThemeAction extends Action {
 
 				this.themeService.setColorTheme(theme.id, target).done(null,
 					err => {
+						onUnexpectedError(err);
 						this.themeService.setColorTheme(currentTheme.id, null);
 					}
 				);
@@ -74,20 +77,18 @@ export class SelectColorThemeAction extends Action {
 			const placeHolder = localize('themes.selectTheme', "Select Color Theme (Up/Down Keys to Preview)");
 			const autoFocusIndex = firstIndex(picks, p => p.id === currentTheme.id);
 			const delayer = new Delayer<void>(100);
+			const chooseTheme = theme => delayer.trigger(() => selectTheme(theme || currentTheme, true), 0);
+			const tryTheme = theme => delayer.trigger(() => selectTheme(theme, false));
 
-			return this.quickOpenService.pick(picks, { placeHolder, autoFocus: { autoFocusIndex } })
-				.then(
-				theme => delayer.trigger(() => selectTheme(theme || currentTheme, true), 0),
-				null,
-				theme => delayer.trigger(() => selectTheme(theme, false))
-				);
+			return this.quickOpenService.pick(picks, { placeHolder, autoFocus: { autoFocusIndex }, onDidFocus: tryTheme })
+				.then(chooseTheme);
 		});
 	}
 }
 
 class SelectIconThemeAction extends Action {
 
-	static ID = 'workbench.action.selectIconTheme';
+	static readonly ID = 'workbench.action.selectIconTheme';
 	static LABEL = localize('selectIconTheme.label', "File Icon Theme");
 
 	constructor(
@@ -124,6 +125,7 @@ class SelectIconThemeAction extends Action {
 				}
 				this.themeService.setFileIconTheme(theme && theme.id, target).done(null,
 					err => {
+						onUnexpectedError(err);
 						this.themeService.setFileIconTheme(currentTheme.id, null);
 					}
 				);
@@ -132,13 +134,11 @@ class SelectIconThemeAction extends Action {
 			const placeHolder = localize('themes.selectIconTheme', "Select File Icon Theme");
 			const autoFocusIndex = firstIndex(picks, p => p.id === currentTheme.id);
 			const delayer = new Delayer<void>(100);
+			const chooseTheme = theme => delayer.trigger(() => selectTheme(theme || currentTheme, true), 0);
+			const tryTheme = theme => delayer.trigger(() => selectTheme(theme, false));
 
-			return this.quickOpenService.pick(picks, { placeHolder, autoFocus: { autoFocusIndex } })
-				.then(
-				theme => delayer.trigger(() => selectTheme(theme || currentTheme, true), 0),
-				null,
-				theme => delayer.trigger(() => selectTheme(theme, false))
-				);
+			return this.quickOpenService.pick(picks, { placeHolder, autoFocus: { autoFocusIndex }, onDidFocus: tryTheme })
+				.then(chooseTheme);
 		});
 	}
 }
@@ -171,33 +171,46 @@ function toEntries(themes: (IColorTheme | IFileIconTheme)[], label?: string, bor
 
 class GenerateColorThemeAction extends Action {
 
-	static ID = 'workbench.action.generateColorTheme';
+	static readonly ID = 'workbench.action.generateColorTheme';
 	static LABEL = localize('generateColorTheme.label', "Generate Color Theme From Current Settings");
 
 	constructor(
 		id: string,
 		label: string,
 		@IWorkbenchThemeService private themeService: IWorkbenchThemeService,
-		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
+		@IEditorService private editorService: IEditorService,
 	) {
 		super(id, label);
 	}
 
 	run(): TPromise<any> {
 		let theme = this.themeService.getColorTheme();
-		let colorRegistry = <IColorRegistry>Registry.as(ColorRegistryExtensions.ColorContribution);
+		let colors = Registry.as<IColorRegistry>(ColorRegistryExtensions.ColorContribution).getColors();
+		let colorIds = colors.map(c => c.id).sort();
 		let resultingColors = {};
-		colorRegistry.getColors().map(c => {
-			let color = theme.getColor(c.id, false);
+		let inherited = [];
+		for (let colorId of colorIds) {
+			let color = theme.getColor(colorId, false);
 			if (color) {
-				resultingColors[c.id] = Color.Format.CSS.formatHexA(color, true);
+				resultingColors[colorId] = Color.Format.CSS.formatHexA(color, true);
+			} else {
+				inherited.push(colorId);
 			}
-		});
+		}
+		for (let id of inherited) {
+			let color = theme.getColor(id);
+			if (color) {
+				resultingColors['__' + id] = Color.Format.CSS.formatHexA(color, true);
+			}
+		}
 		let contents = JSON.stringify({
+			'$schema': schemaId,
 			type: theme.type,
 			colors: resultingColors,
-			tokenColors: theme.tokenColors
+			tokenColors: theme.tokenColors.filter(t => !!t.scope)
 		}, null, '\t');
+		contents = contents.replace(/\"__/g, '//"');
+
 		return this.editorService.openEditor({ contents, language: 'jsonc' });
 	}
 }

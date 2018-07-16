@@ -5,8 +5,8 @@
 
 'use strict';
 
-import path = require('path');
-import assert = require('assert');
+import * as path from 'path';
+import * as assert from 'assert';
 
 import { join, normalize } from 'vs/base/common/paths';
 import * as platform from 'vs/base/common/platform';
@@ -483,6 +483,26 @@ suite('FileSearchEngine', () => {
 		});
 	});
 
+	test('Files: *.* include with unicode', function (done: () => void) {
+		this.timeout(testTimeout);
+		let engine = new FileSearchEngine({
+			folderQueries: ROOT_FOLDER_QUERY,
+			filePattern: '*.*',
+			includePattern: { '**/üm laut汉语/*': true }
+		});
+
+		let count = 0;
+		engine.search((result) => {
+			if (result) {
+				count++;
+			}
+		}, () => { }, (error) => {
+			assert.ok(!error);
+			assert.equal(count, 1);
+			done();
+		});
+	});
+
 	test('Files: multiroot with exclude', function (done: () => void) {
 		this.timeout(testTimeout);
 		const folderQueries: IFolderSearch[] = [
@@ -558,57 +578,11 @@ suite('FileSearchEngine', () => {
 		});
 	});
 
-	test('Files: absolute path to file ignores excludes', function (done: () => void) {
-		this.timeout(testTimeout);
-		let engine = new FileSearchEngine({
-			folderQueries: ROOT_FOLDER_QUERY,
-			filePattern: path.normalize(path.join(require.toUrl('./fixtures'), 'site.css')),
-			excludePattern: { '**/*.css': true }
-		});
-
-		let count = 0;
-		let res: IRawFileMatch;
-		engine.search((result) => {
-			if (result) {
-				count++;
-			}
-			res = result;
-		}, () => { }, (error) => {
-			assert.ok(!error);
-			assert.equal(count, 1);
-			assert.equal(path.basename(res.relativePath), 'site.css');
-			done();
-		});
-	});
-
 	test('Files: relative path matched once', function (done: () => void) {
 		this.timeout(testTimeout);
 		let engine = new FileSearchEngine({
 			folderQueries: ROOT_FOLDER_QUERY,
 			filePattern: path.normalize(path.join('examples', 'company.js'))
-		});
-
-		let count = 0;
-		let res: IRawFileMatch;
-		engine.search((result) => {
-			if (result) {
-				count++;
-			}
-			res = result;
-		}, () => { }, (error) => {
-			assert.ok(!error);
-			assert.equal(count, 1);
-			assert.equal(path.basename(res.relativePath), 'company.js');
-			done();
-		});
-	});
-
-	test('Files: relative path to file ignores excludes', function (done: () => void) {
-		this.timeout(testTimeout);
-		let engine = new FileSearchEngine({
-			folderQueries: ROOT_FOLDER_QUERY,
-			filePattern: path.normalize(path.join('examples', 'company.js')),
-			excludePattern: { '**/*.js': true }
 		});
 
 		let count = 0;

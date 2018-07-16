@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { TPromise } from 'vs/base/common/winjs.base';
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 import { Action } from 'vs/base/common/actions';
 import { KeyCode, KeyMod, KeyChord } from 'vs/base/common/keyCodes';
 import { Registry } from 'vs/platform/registry/common/platform';
@@ -14,8 +14,8 @@ import { IPartService } from 'vs/workbench/services/part/common/partService';
 
 class ToggleZenMode extends Action {
 
-	public static readonly ID = 'workbench.action.toggleZenMode';
-	public static readonly LABEL = nls.localize('toggleZenMode', "Toggle Zen Mode");
+	static readonly ID = 'workbench.action.toggleZenMode';
+	static readonly LABEL = nls.localize('toggleZenMode', "Toggle Zen Mode");
 
 	constructor(
 		id: string,
@@ -26,7 +26,7 @@ class ToggleZenMode extends Action {
 		this.enabled = !!this.partService;
 	}
 
-	public run(): TPromise<any> {
+	run(): TPromise<any> {
 		this.partService.toggleZenMode();
 		return TPromise.as(null);
 	}

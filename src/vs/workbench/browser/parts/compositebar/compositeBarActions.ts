@@ -5,14 +5,14 @@
 
 'use strict';
 
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 import { Action } from 'vs/base/common/actions';
 import { TPromise } from 'vs/base/common/winjs.base';
 import * as dom from 'vs/base/browser/dom';
 import { Builder, $ } from 'vs/base/browser/builder';
 import { BaseActionItem, IBaseActionItemOptions, Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { ICommandService } from 'vs/platform/commands/common/commands';
-import { dispose } from 'vs/base/common/lifecycle';
+import { dispose, IDisposable, Disposable, toDisposable } from 'vs/base/common/lifecycle';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IThemeService, ITheme } from 'vs/platform/theme/common/themeService';
 import { TextBadge, NumberBadge, IBadge, IconBadge, ProgressBadge } from 'vs/workbench/services/activity/common/activity';
@@ -21,11 +21,12 @@ import { contrastBorder } from 'vs/platform/theme/common/colorRegistry';
 import { DelayedDragHandler } from 'vs/base/browser/dnd';
 import { IActivity } from 'vs/workbench/common/activity';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
-import Event, { Emitter } from 'vs/base/common/event';
+import { Event, Emitter } from 'vs/base/common/event';
 
 export interface ICompositeActivity {
 	badge: IBadge;
 	clazz: string;
+	priority: number;
 }
 
 export interface ICompositeBar {
@@ -51,8 +52,15 @@ export interface ICompositeBar {
 }
 
 export class ActivityAction extends Action {
-	private badge: IBadge;
+
+	private _onDidChangeActivity = new Emitter<this>();
+	get onDidChangeActivity(): Event<this> { return this._onDidChangeActivity.event; }
+
 	private _onDidChangeBadge = new Emitter<this>();
+	get onDidChangeBadge(): Event<this> { return this._onDidChangeBadge.event; }
+
+	private badge: IBadge;
+	private clazz: string | undefined;
 
 	constructor(private _activity: IActivity) {
 		super(_activity.id, _activity.name, _activity.cssClass);
@@ -60,33 +68,46 @@ export class ActivityAction extends Action {
 		this.badge = null;
 	}
 
-	public get activity(): IActivity {
+	get activity(): IActivity {
 		return this._activity;
 	}
 
-	public get onDidChangeBadge(): Event<this> {
-		return this._onDidChangeBadge.event;
+	set activity(activity: IActivity) {
+		this._activity = activity;
+		this._onDidChangeActivity.fire(this);
 	}
 
-	public activate(): void {
+	activate(): void {
 		if (!this.checked) {
 			this._setChecked(true);
 		}
 	}
 
-	public deactivate(): void {
+	deactivate(): void {
 		if (this.checked) {
 			this._setChecked(false);
 		}
 	}
 
-	public getBadge(): IBadge {
+	getBadge(): IBadge {
 		return this.badge;
 	}
 
-	public setBadge(badge: IBadge): void {
+	getClass(): string | undefined {
+		return this.clazz;
+	}
+
+	setBadge(badge: IBadge, clazz?: string): void {
 		this.badge = badge;
+		this.clazz = clazz;
 		this._onDidChangeBadge.fire(this);
+	}
+
+	dispose(): void {
+		this._onDidChangeActivity.dispose();
+		this._onDidChangeBadge.dispose();
+
+		super.dispose();
 	}
 }
 
@@ -109,6 +130,7 @@ export class ActivityActionItem extends BaseActionItem {
 	protected options: IActivityActionItemOptions;
 
 	private $badgeContent: Builder;
+	private badgeDisposable: IDisposable = Disposable.None;
 	private mouseUpTimeout: number;
 
 	constructor(
@@ -119,7 +141,8 @@ export class ActivityActionItem extends BaseActionItem {
 		super(null, action, options);
 
 		this.themeService.onThemeChange(this.onThemeChange, this, this._callOnDispose);
-		action.onDidChangeBadge(this.handleBadgeChangeEvenet, this, this._callOnDispose);
+		action.onDidChangeActivity(this.updateActivity, this, this._callOnDispose);
+		action.onDidChangeBadge(this.updateBadge, this, this._callOnDispose);
 	}
 
 	protected get activity(): IActivity {
@@ -151,14 +174,13 @@ export class ActivityActionItem extends BaseActionItem {
 		}
 	}
 
-	public render(container: HTMLElement): void {
+	render(container: HTMLElement): void {
 		super.render(container);
 
 		// Make the container tab-able for keyboard navigation
 		this.$container = $(container).attr({
 			tabIndex: '0',
-			role: 'button',
-			title: this.activity.name
+			role: 'button'
 		});
 
 		// Try hard to prevent keyboard only focus feedback when using mouse
@@ -178,19 +200,13 @@ export class ActivityActionItem extends BaseActionItem {
 
 		// Label
 		this.$label = $('a.action-label').appendTo(this.builder);
-		if (this.activity.cssClass) {
-			this.$label.addClass(this.activity.cssClass);
-		}
-		if (!this.options.icon) {
-			this.$label.text(this.getAction().label);
-		}
 
-		this.$badge = this.builder.clone().div({ 'class': 'badge' }, (badge: Builder) => {
+		this.$badge = this.builder.clone().div({ 'class': 'badge' }, badge => {
 			this.$badgeContent = badge.div({ 'class': 'badge-content' });
 		});
-
 		this.$badge.hide();
 
+		this.updateActivity();
 		this.updateStyles();
 	}
 
@@ -198,7 +214,24 @@ export class ActivityActionItem extends BaseActionItem {
 		this.updateStyles();
 	}
 
-	protected updateBadge(badge: IBadge): void {
+	protected updateActivity(): void {
+		this.updateLabel();
+		this.updateTitle(this.activity.name);
+		this.updateBadge();
+	}
+
+	protected updateBadge(): void {
+		const action = this.getAction();
+		if (!this.$badge || !this.$badgeContent || !(action instanceof ActivityAction)) {
+			return;
+		}
+
+		const badge = action.getBadge();
+		const clazz = action.getClass();
+
+		this.badgeDisposable.dispose();
+		this.badgeDisposable = Disposable.None;
+
 		this.$badgeContent.empty();
 		this.$badge.hide();
 
@@ -233,6 +266,11 @@ export class ActivityActionItem extends BaseActionItem {
 			else if (badge instanceof ProgressBadge) {
 				this.$badge.show();
 			}
+
+			if (clazz) {
+				this.$badge.addClass(clazz);
+				this.badgeDisposable = toDisposable(() => this.$badge.removeClass(clazz));
+			}
 		}
 
 		// Title
@@ -246,7 +284,19 @@ export class ActivityActionItem extends BaseActionItem {
 		} else {
 			title = this.activity.name;
 		}
+		this.updateTitle(title);
+	}
 
+	private updateLabel(): void {
+		if (this.activity.cssClass) {
+			this.$label.addClass(this.activity.cssClass);
+		}
+		if (!this.options.icon) {
+			this.$label.text(this.getAction().label);
+		}
+	}
+
+	private updateTitle(title: string): void {
 		[this.$label, this.$badge, this.$container].forEach(b => {
 			if (b) {
 				b.attr('aria-label', title);
@@ -255,14 +305,7 @@ export class ActivityActionItem extends BaseActionItem {
 		});
 	}
 
-	private handleBadgeChangeEvenet(): void {
-		const action = this.getAction();
-		if (action instanceof ActivityAction) {
-			this.updateBadge(action.getBadge());
-		}
-	}
-
-	public dispose(): void {
+	dispose(): void {
 		super.dispose();
 
 		if (this.mouseUpTimeout) {
@@ -285,7 +328,7 @@ export class CompositeOverflowActivityAction extends ActivityAction {
 		});
 	}
 
-	public run(event: any): TPromise<any> {
+	run(event: any): TPromise<any> {
 		this.showMenu();
 
 		return TPromise.as(true);
@@ -308,7 +351,7 @@ export class CompositeOverflowActivityActionItem extends ActivityActionItem {
 		super(action, { icon: true, colors }, themeService);
 	}
 
-	public showMenu(): void {
+	showMenu(): void {
 		if (this.actions) {
 			dispose(this.actions);
 		}
@@ -345,7 +388,7 @@ export class CompositeOverflowActivityActionItem extends ActivityActionItem {
 		});
 	}
 
-	public dispose(): void {
+	dispose(): void {
 		super.dispose();
 
 		this.actions = dispose(this.actions);
@@ -360,7 +403,7 @@ class ManageExtensionAction extends Action {
 		super('activitybar.manage.extension', nls.localize('manageExtension', "Manage Extension"));
 	}
 
-	public run(id: string): TPromise<any> {
+	run(id: string): TPromise<any> {
 		return this.commandService.executeCommand('_extensions.manage', id);
 	}
 }
@@ -391,6 +434,8 @@ export class CompositeActionItem extends ActivityActionItem {
 		if (!CompositeActionItem.manageExtensionAction) {
 			CompositeActionItem.manageExtensionAction = instantiationService.createInstance(ManageExtensionAction);
 		}
+
+		compositeActivityAction.onDidChangeActivity(() => { this.compositeActivity = null; this.updateActivity(); }, this, this._callOnDispose);
 	}
 
 	protected get activity(): IActivity {
@@ -422,8 +467,11 @@ export class CompositeActionItem extends ActivityActionItem {
 		return null;
 	}
 
-	public render(container: HTMLElement): void {
+	render(container: HTMLElement): void {
 		super.render(container);
+
+		this._updateChecked();
+		this._updateEnabled();
 
 		this.$container.on('contextmenu', e => {
 			dom.EventHelper.stop(e, true);
@@ -504,7 +552,7 @@ export class CompositeActionItem extends ActivityActionItem {
 		element.style.backgroundColor = isDragging && dragBackground ? dragBackground.toString() : null;
 	}
 
-	public static getDraggedCompositeId(): string {
+	static getDraggedCompositeId(): string {
 		return CompositeActionItem.draggedCompositeId;
 	}
 
@@ -512,7 +560,7 @@ export class CompositeActionItem extends ActivityActionItem {
 		CompositeActionItem.draggedCompositeId = compositeId;
 	}
 
-	public static clearDraggedComposite(): void {
+	static clearDraggedComposite(): void {
 		CompositeActionItem.draggedCompositeId = void 0;
 	}
 
@@ -538,17 +586,19 @@ export class CompositeActionItem extends ActivityActionItem {
 		});
 	}
 
-	public focus(): void {
+	focus(): void {
 		this.$container.domFocus();
 	}
 
 	protected _updateClass(): void {
 		if (this.cssClass) {
-			this.$badge.removeClass(this.cssClass);
+			this.$label.removeClass(this.cssClass);
 		}
 
 		this.cssClass = this.getAction().class;
-		this.$badge.addClass(this.cssClass);
+		if (this.cssClass) {
+			this.$label.addClass(this.cssClass);
+		}
 	}
 
 	protected _updateChecked(): void {
@@ -567,7 +617,7 @@ export class CompositeActionItem extends ActivityActionItem {
 		}
 	}
 
-	public dispose(): void {
+	dispose(): void {
 		super.dispose();
 
 		CompositeActionItem.clearDraggedComposite();
@@ -587,7 +637,7 @@ export class ToggleCompositePinnedAction extends Action {
 		this.checked = this.activity && this.compositeBar.isPinned(this.activity.id);
 	}
 
-	public run(context: string): TPromise<any> {
+	run(context: string): TPromise<any> {
 		const id = this.activity ? this.activity.id : context;
 
 		if (this.compositeBar.isPinned(id)) {

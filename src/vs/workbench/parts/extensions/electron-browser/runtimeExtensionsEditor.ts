@@ -14,20 +14,17 @@ import { EditorInput } from 'vs/workbench/common/editor';
 import pkg from 'vs/platform/node/package';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Action, IAction } from 'vs/base/common/actions';
-import { Builder, Dimension } from 'vs/base/browser/builder';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IInstantiationService, createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { IExtensionsWorkbenchService, IExtension } from 'vs/workbench/parts/extensions/common/extensions';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
-import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { IExtensionService, IExtensionDescription, IExtensionsStatus, IExtensionHostProfile } from 'vs/platform/extensions/common/extensions';
-import { IDelegate, IRenderer } from 'vs/base/browser/ui/list/list';
-import { WorkbenchList, IListService } from 'vs/platform/list/browser/listService';
-import { append, $, addClass, toggleClass } from 'vs/base/browser/dom';
-import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
-import { IMessageService, Severity } from 'vs/platform/message/common/message';
+import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { IExtensionService, IExtensionDescription, IExtensionsStatus, IExtensionHostProfile } from 'vs/workbench/services/extensions/common/extensions';
+import { IVirtualDelegate, IRenderer } from 'vs/base/browser/ui/list/list';
+import { WorkbenchList } from 'vs/platform/list/browser/listService';
+import { append, $, addClass, toggleClass, Dimension } from 'vs/base/browser/dom';
+import { ActionBar, Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { dispose, IDisposable } from 'vs/base/common/lifecycle';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import { clipboard } from 'electron';
@@ -38,7 +35,9 @@ import { writeFile } from 'vs/base/node/pfs';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { memoize } from 'vs/base/common/decorators';
 import { isFalsyOrEmpty } from 'vs/base/common/arrays';
-import Event from 'vs/base/common/event';
+import { Event } from 'vs/base/common/event';
+import { DisableForWorkspaceAction, DisableGloballyAction } from 'vs/workbench/parts/extensions/electron-browser/extensionsActions';
+import { INotificationService } from 'vs/platform/notification/common/notification';
 
 export const IExtensionHostProfileService = createDecorator<IExtensionHostProfileService>('extensionHostProfileService');
 
@@ -88,7 +87,7 @@ interface IRuntimeExtension {
 
 export class RuntimeExtensionsEditor extends BaseEditor {
 
-	static ID: string = 'workbench.editor.runtimeExtensions';
+	static readonly ID: string = 'workbench.editor.runtimeExtensions';
 
 	private _list: WorkbenchList<IRuntimeExtension>;
 	private _profileInfo: IExtensionHostProfile;
@@ -102,9 +101,7 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 		@IThemeService themeService: IThemeService,
 		@IExtensionsWorkbenchService private readonly _extensionsWorkbenchService: IExtensionsWorkbenchService,
 		@IExtensionService private readonly _extensionService: IExtensionService,
-		@IListService private readonly _listService: IListService,
-		@IContextKeyService private readonly _contextKeyService: IContextKeyService,
-		@IMessageService private readonly _messageService: IMessageService,
+		@INotificationService private readonly _notificationService: INotificationService,
 		@IContextMenuService private readonly _contextMenuService: IContextMenuService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 		@IExtensionHostProfileService private readonly _extensionHostProfileService: IExtensionHostProfileService,
@@ -214,14 +211,12 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 		return result;
 	}
 
-	protected createEditor(parent: Builder): void {
-		const container = parent.getHTMLElement();
-
-		addClass(container, 'runtime-extensions-editor');
+	protected createEditor(parent: HTMLElement): void {
+		addClass(parent, 'runtime-extensions-editor');
 
 		const TEMPLATE_ID = 'runtimeExtensionElementTemplate';
 
-		const delegate = new class implements IDelegate<IRuntimeExtension>{
+		const delegate = new class implements IVirtualDelegate<IRuntimeExtension>{
 			getHeight(element: IRuntimeExtension): number {
 				return 62;
 			}
@@ -269,7 +264,7 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 				const actionbar = new ActionBar(element, {
 					animated: false
 				});
-				actionbar.onDidRun(({ error }) => error && this._messageService.show(Severity.Error, error));
+				actionbar.onDidRun(({ error }) => error && this._notificationService.error(error));
 				actionbar.push(new ReportExtensionIssueAction(), { icon: true, label: true });
 
 				const disposables = [actionbar];
@@ -301,7 +296,7 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 				let syncTime = activationTimes.codeLoadingTime + activationTimes.activateCallTime;
 				data.activationTime.textContent = activationTimes.startup ? `Startup Activation: ${syncTime}ms` : `Activation: ${syncTime}ms`;
 				data.actionbar.context = element;
-				toggleClass(data.actionbar.getContainer().getHTMLElement(), 'hidden', element.marketplaceInfo && element.marketplaceInfo.type === LocalExtensionType.User && (!element.description.repository || !element.description.repository.url));
+				toggleClass(data.actionbar.getContainer(), 'hidden', element.marketplaceInfo && element.marketplaceInfo.type === LocalExtensionType.User && (!element.description.repository || !element.description.repository.url));
 
 				let title: string;
 				if (activationTimes.activationEvent === '*') {
@@ -309,15 +304,30 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 				} else if (/^workspaceContains:/.test(activationTimes.activationEvent)) {
 					let fileNameOrGlob = activationTimes.activationEvent.substr('workspaceContains:'.length);
 					if (fileNameOrGlob.indexOf('*') >= 0 || fileNameOrGlob.indexOf('?') >= 0) {
-						title = nls.localize('workspaceContainsGlobActivation', "Activated because a file matching {0} exists in your workspace", fileNameOrGlob);
+						title = nls.localize({
+							key: 'workspaceContainsGlobActivation',
+							comment: [
+								'{0} will be a glob pattern'
+							]
+						}, "Activated because a file matching {0} exists in your workspace", fileNameOrGlob);
 					} else {
-						title = nls.localize('workspaceContainsFileActivation', "Activated because file {0} exists in your workspace", fileNameOrGlob);
+						title = nls.localize({
+							key: 'workspaceContainsFileActivation',
+							comment: [
+								'{0} will be a file name'
+							]
+						}, "Activated because file {0} exists in your workspace", fileNameOrGlob);
 					}
 				} else if (/^onLanguage:/.test(activationTimes.activationEvent)) {
 					let language = activationTimes.activationEvent.substr('onLanguage:'.length);
 					title = nls.localize('languageActivation', "Activated because you opened a {0} file", language);
 				} else {
-					title = nls.localize('workspaceGenericActivation', "Activated on {0}", activationTimes.activationEvent);
+					title = nls.localize({
+						key: 'workspaceGenericActivation',
+						comment: [
+							'The {0} placeholder will be an activation event, like e.g. \'language:typescript\', \'debug\', etc.'
+						]
+					}, "Activated on {0}", activationTimes.activationEvent);
 				}
 				data.activationTime.title = title;
 				if (!isFalsyOrEmpty(element.status.runtimeErrors)) {
@@ -359,21 +369,29 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 				}
 			},
 
+			disposeElement: () => null,
+
 			disposeTemplate: (data: IRuntimeExtensionTemplateData): void => {
 				data.disposables = dispose(data.disposables);
 			}
 		};
 
-		this._list = new WorkbenchList<IRuntimeExtension>(container, delegate, [renderer], {
+		this._list = this._instantiationService.createInstance(WorkbenchList, parent, delegate, [renderer], {
 			multipleSelectionSupport: false
-		}, this._contextKeyService, this._listService, this.themeService);
+		}) as WorkbenchList<IRuntimeExtension>;
 
 		this._list.splice(0, this._list.length, this._elements);
 
 		this._list.onContextMenu((e) => {
 			const actions: IAction[] = [];
 
-			actions.push(this.saveExtensionHostProfileAction, this.extensionHostProfileAction);
+			if (e.element.marketplaceInfo.type === LocalExtensionType.User) {
+				actions.push(this._instantiationService.createInstance(DisableForWorkspaceAction, DisableForWorkspaceAction.LABEL));
+				actions.push(this._instantiationService.createInstance(DisableGloballyAction, DisableGloballyAction.LABEL));
+				actions.forEach((a: DisableForWorkspaceAction | DisableGloballyAction) => a.extension = e.element.marketplaceInfo);
+				actions.push(new Separator());
+			}
+			actions.push(this.extensionHostProfileAction, this.saveExtensionHostProfileAction);
 
 			this._contextMenuService.showContextMenu({
 				getAnchor: () => e.anchor,
@@ -406,7 +424,7 @@ export class RuntimeExtensionsEditor extends BaseEditor {
 
 export class RuntimeExtensionsInput extends EditorInput {
 
-	static ID = 'workbench.runtimeExtensions.input';
+	static readonly ID = 'workbench.runtimeExtensions.input';
 
 	constructor() {
 		super();
@@ -427,7 +445,7 @@ export class RuntimeExtensionsInput extends EditorInput {
 		return true;
 	}
 
-	resolve(refresh?: boolean): TPromise<any> {
+	resolve(): TPromise<any> {
 		return TPromise.as(null);
 	}
 
@@ -444,12 +462,12 @@ export class RuntimeExtensionsInput extends EditorInput {
 }
 
 export class ShowRuntimeExtensionsAction extends Action {
-	static ID = 'workbench.action.showRuntimeExtensions';
+	static readonly ID = 'workbench.action.showRuntimeExtensions';
 	static LABEL = nls.localize('showRuntimeExtensions', "Show Running Extensions");
 
 	constructor(
 		id: string, label: string,
-		@IWorkbenchEditorService private readonly _editorService: IWorkbenchEditorService,
+		@IEditorService private readonly _editorService: IEditorService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService
 	) {
 		super(id, label);
@@ -461,7 +479,7 @@ export class ShowRuntimeExtensionsAction extends Action {
 }
 
 class ReportExtensionIssueAction extends Action {
-	static ID = 'workbench.extensions.action.reportExtensionIssue';
+	static readonly ID = 'workbench.extensions.action.reportExtensionIssue';
 	static LABEL = nls.localize('reportExtensionIssue', "Report Issue");
 
 	constructor(
@@ -499,7 +517,7 @@ class ReportExtensionIssueAction extends Action {
 }
 
 class ExtensionHostProfileAction extends Action {
-	static ID = 'workbench.extensions.action.extensionHostProfile';
+	static readonly ID = 'workbench.extensions.action.extensionHostProfile';
 	static LABEL_START = nls.localize('extensionHostProfileStart', "Start Extension Host Profile");
 	static LABEL_STOP = nls.localize('extensionHostProfileStop', "Stop Extension Host Profile");
 	static STOP_CSS_CLASS = 'extension-host-profile-stop';
@@ -542,7 +560,7 @@ class ExtensionHostProfileAction extends Action {
 class SaveExtensionHostProfileAction extends Action {
 
 	static LABEL = nls.localize('saveExtensionHostProfile', "Save Extension Host Profile");
-	static ID = 'workbench.extensions.action.saveExtensionHostProfile';
+	static readonly ID = 'workbench.extensions.action.saveExtensionHostProfile';
 
 	constructor(
 		id: string = SaveExtensionHostProfileAction.ID, label: string = SaveExtensionHostProfileAction.LABEL,
@@ -557,8 +575,12 @@ class SaveExtensionHostProfileAction extends Action {
 		});
 	}
 
-	async run(): TPromise<any> {
-		let picked = this._windowService.showSaveDialog({
+	run(): TPromise<any> {
+		return TPromise.wrap(this._asyncRun());
+	}
+
+	private async _asyncRun(): Promise<any> {
+		let picked = await this._windowService.showSaveDialog({
 			title: 'Save Extension Host Profile',
 			buttonLabel: 'Save',
 			defaultPath: `CPU-${new Date().toISOString().replace(/[\-:]/g, '')}.cpuprofile`,
