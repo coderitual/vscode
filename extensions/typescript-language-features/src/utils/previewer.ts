@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { MarkdownString } from 'vscode';
+import * as vscode from 'vscode';
 import * as Proto from '../protocol';
 
 function getTagBodyText(tag: Proto.JSDocTagInfo): string | undefined {
@@ -14,7 +14,7 @@ function getTagBodyText(tag: Proto.JSDocTagInfo): string | undefined {
 	switch (tag.name) {
 		case 'example':
 		case 'default':
-			// Convert to markdown code block if it not already one
+			// Convert to markdown code block if it is not already one
 			if (tag.text.match(/^\s*[~`]{3}/g)) {
 				return tag.text;
 			}
@@ -64,17 +64,17 @@ export function tagsMarkdownPreview(tags: Proto.JSDocTagInfo[]): string {
 export function markdownDocumentation(
 	documentation: Proto.SymbolDisplayPart[],
 	tags: Proto.JSDocTagInfo[]
-): MarkdownString {
-	const out = new MarkdownString();
+): vscode.MarkdownString {
+	const out = new vscode.MarkdownString();
 	addMarkdownDocumentation(out, documentation, tags);
 	return out;
 }
 
 export function addMarkdownDocumentation(
-	out: MarkdownString,
+	out: vscode.MarkdownString,
 	documentation: Proto.SymbolDisplayPart[] | undefined,
 	tags: Proto.JSDocTagInfo[] | undefined
-): MarkdownString {
+): vscode.MarkdownString {
 	if (documentation) {
 		out.appendMarkdown(plain(documentation));
 	}

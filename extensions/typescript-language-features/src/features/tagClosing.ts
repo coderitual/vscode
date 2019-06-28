@@ -8,19 +8,20 @@ import * as Proto from '../protocol';
 import { ITypeScriptServiceClient } from '../typescriptService';
 import API from '../utils/api';
 import { ConditionalRegistration, ConfigurationDependentRegistration, VersionDependentRegistration } from '../utils/dependentRegistration';
-import { disposeAll } from '../utils/dispose';
+import { Disposable } from '../utils/dispose';
 import * as typeConverters from '../utils/typeConverters';
 
-class TagClosing {
+class TagClosing extends Disposable {
+	public static readonly minVersion = API.v300;
 
 	private _disposed = false;
 	private _timeout: NodeJS.Timer | undefined = undefined;
 	private _cancel: vscode.CancellationTokenSource | undefined = undefined;
-	private readonly _disposables: vscode.Disposable[] = [];
 
 	constructor(
 		private readonly client: ITypeScriptServiceClient
 	) {
+		super();
 		vscode.workspace.onDidChangeTextDocument(
 			event => this.onDidChangeTextDocument(event.document, event.contentChanges),
 			null,
@@ -28,9 +29,8 @@ class TagClosing {
 	}
 
 	public dispose() {
+		super.dispose();
 		this._disposed = true;
-
-		disposeAll(this._disposables);
 
 		if (this._timeout) {
 			clearTimeout(this._timeout);
@@ -46,14 +46,14 @@ class TagClosing {
 
 	private onDidChangeTextDocument(
 		document: vscode.TextDocument,
-		changes: vscode.TextDocumentContentChangeEvent[]
+		changes: readonly vscode.TextDocumentContentChangeEvent[]
 	) {
 		const activeDocument = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
 		if (document !== activeDocument || changes.length === 0) {
 			return;
 		}
 
-		const filepath = this.client.toPath(document.uri);
+		const filepath = this.client.toOpenedFilePath(document);
 		if (!filepath) {
 			return;
 		}
@@ -74,12 +74,13 @@ class TagClosing {
 			return;
 		}
 
-		const secondToLastCharacter = lastChange.text[lastChange.text.length - 2];
-		if (secondToLastCharacter === '>') {
+		const priorCharacter = lastChange.range.start.character > 0
+			? document.getText(new vscode.Range(lastChange.range.start.translate({ characterDelta: -1 }), lastChange.range.start))
+			: '';
+		if (priorCharacter === '>') {
 			return;
 		}
 
-		const rangeStart = lastChange.range.start;
 		const version = document.version;
 		this._timeout = setTimeout(async () => {
 			this._timeout = undefined;
@@ -88,18 +89,15 @@ class TagClosing {
 				return;
 			}
 
-			let position = new vscode.Position(rangeStart.line, rangeStart.character + lastChange.text.length);
-			let body: Proto.TextInsertion | undefined = undefined;
-			const args: Proto.JsxClosingTagRequestArgs = typeConverters.Position.toFileLocationRequestArgs(filepath, position);
+			const addedLines = lastChange.text.split(/\r\n|\n/g);
+			const position = addedLines.length <= 1
+				? lastChange.range.start.translate({ characterDelta: lastChange.text.length })
+				: new vscode.Position(lastChange.range.start.line + addedLines.length - 1, addedLines[addedLines.length - 1].length);
 
+			const args: Proto.JsxClosingTagRequestArgs = typeConverters.Position.toFileLocationRequestArgs(filepath, position);
 			this._cancel = new vscode.CancellationTokenSource();
-			try {
-				const response = await this.client.execute('jsxClosingTag', args, this._cancel.token);
-				body = response && response.body;
-				if (!body) {
-					return;
-				}
-			} catch {
+			const response = await this.client.execute('jsxClosingTag', args, this._cancel.token);
+			if (response.type !== 'response' || !response.body) {
 				return;
 			}
 
@@ -112,10 +110,11 @@ class TagClosing {
 				return;
 			}
 
+			const insertion = response.body;
 			const activeDocument = activeEditor.document;
 			if (document === activeDocument && activeDocument.version === version) {
 				activeEditor.insertSnippet(
-					this.getTagSnippet(body),
+					this.getTagSnippet(insertion),
 					this.getInsertionPositions(activeEditor, position));
 			}
 		}, 100);
@@ -136,28 +135,31 @@ class TagClosing {
 	}
 }
 
-export class ActiveDocumentDependentRegistration {
+export class ActiveDocumentDependentRegistration extends Disposable {
 	private readonly _registration: ConditionalRegistration;
-	private readonly _disposables: vscode.Disposable[] = [];
 
 	constructor(
 		private readonly selector: vscode.DocumentSelector,
 		register: () => vscode.Disposable,
 	) {
-		this._registration = new ConditionalRegistration(register);
+		super();
+		this._registration = this._register(new ConditionalRegistration(register));
 		vscode.window.onDidChangeActiveTextEditor(this.update, this, this._disposables);
+		vscode.workspace.onDidOpenTextDocument(this.onDidOpenDocument, this, this._disposables);
 		this.update();
-	}
-
-	public dispose() {
-		disposeAll(this._disposables);
-		this._registration.dispose();
 	}
 
 	private update() {
 		const editor = vscode.window.activeTextEditor;
 		const enabled = !!(editor && vscode.languages.match(this.selector, editor.document));
 		this._registration.update(enabled);
+	}
+
+	private onDidOpenDocument(openedDocument: vscode.TextDocument) {
+		if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === openedDocument) {
+			// The active document's language may have changed
+			this.update();
+		}
 	}
 }
 
@@ -166,7 +168,7 @@ export function register(
 	modeId: string,
 	client: ITypeScriptServiceClient,
 ) {
-	return new VersionDependentRegistration(client, API.v300, () =>
+	return new VersionDependentRegistration(client, TagClosing.minVersion, () =>
 		new ConfigurationDependentRegistration(modeId, 'autoClosingTags', () =>
 			new ActiveDocumentDependentRegistration(selector, () =>
 				new TagClosing(client))));

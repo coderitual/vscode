@@ -3,20 +3,25 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as fs from 'fs';
-import { CancellationTokenSource, Disposable, EventEmitter, TextDocument, TextDocumentChangeEvent, TextDocumentContentChangeEvent, Uri, workspace } from 'vscode';
+import * as vscode from 'vscode';
 import * as Proto from '../protocol';
 import { ITypeScriptServiceClient } from '../typescriptService';
 import API from '../utils/api';
 import { Delayer } from '../utils/async';
-import { disposeAll } from '../utils/dispose';
+import { Disposable } from '../utils/dispose';
 import * as languageModeIds from '../utils/languageModeIds';
 import { ResourceMap } from '../utils/resourceMap';
 import * as typeConverters from '../utils/typeConverters';
 
-enum BufferKind {
+const enum BufferKind {
 	TypeScript = 1,
 	JavaScript = 2,
+}
+
+const enum BufferState {
+	Initial = 1,
+	Open = 2,
+	Closed = 2,
 }
 
 function mode2ScriptKind(mode: string): 'TS' | 'TSX' | 'JS' | 'JSX' | undefined {
@@ -29,12 +34,124 @@ function mode2ScriptKind(mode: string): 'TS' | 'TSX' | 'JS' | 'JSX' | undefined 
 	return undefined;
 }
 
-class SyncedBuffer {
+/**
+ * Manages synchronization of buffers with the TS server.
+ *
+ * If supported, batches together file changes. This allows the TS server to more efficiently process changes.
+ */
+class BufferSynchronizer {
+
+	private _pending: Proto.UpdateOpenRequestArgs = {};
+	private _pendingFiles = new Set<string>();
 
 	constructor(
-		private readonly document: TextDocument,
-		public readonly filepath: string,
 		private readonly client: ITypeScriptServiceClient
+	) { }
+
+	public open(args: Proto.OpenRequestArgs) {
+		if (this.supportsBatching) {
+			this.updatePending(args.file, pending => {
+				if (!pending.openFiles) {
+					pending.openFiles = [];
+				}
+				pending.openFiles.push(args);
+			});
+		} else {
+			this.client.executeWithoutWaitingForResponse('open', args);
+		}
+	}
+
+	public close(filepath: string) {
+		if (this.supportsBatching) {
+			this.updatePending(filepath, pending => {
+				if (!pending.closedFiles) {
+					pending.closedFiles = [];
+				}
+				pending.closedFiles.push(filepath);
+			});
+		} else {
+			const args: Proto.FileRequestArgs = { file: filepath };
+			this.client.executeWithoutWaitingForResponse('close', args);
+		}
+	}
+
+	public change(filepath: string, events: readonly vscode.TextDocumentContentChangeEvent[]) {
+		if (!events.length) {
+			return;
+		}
+
+		if (this.supportsBatching) {
+			this.updatePending(filepath, pending => {
+				if (!pending.changedFiles) {
+					pending.changedFiles = [];
+				}
+
+				pending.changedFiles.push({
+					fileName: filepath,
+					textChanges: events.map((change): Proto.CodeEdit => ({
+						newText: change.text,
+						start: typeConverters.Position.toLocation(change.range.start),
+						end: typeConverters.Position.toLocation(change.range.end),
+					})).reverse(), // Send the edits end-of-document to start-of-document order
+				});
+			});
+		} else {
+			for (const { range, text } of events) {
+				const args: Proto.ChangeRequestArgs = {
+					insertString: text,
+					...typeConverters.Range.toFormattingRequestArgs(filepath, range)
+				};
+				this.client.executeWithoutWaitingForResponse('change', args);
+			}
+		}
+	}
+
+	public beforeCommand(command: string) {
+		if (command === 'updateOpen') {
+			return;
+		}
+
+		this.flush();
+	}
+
+	private flush() {
+		if (!this.supportsBatching) {
+			// We've already eagerly synchronized
+			return;
+		}
+
+		if (this._pending.changedFiles || this._pending.closedFiles || this._pending.openFiles) {
+			this.client.executeWithoutWaitingForResponse('updateOpen', this._pending);
+			this._pending = {};
+			this._pendingFiles.clear();
+		}
+	}
+
+	private get supportsBatching(): boolean {
+		return this.client.apiVersion.gte(API.v340) && vscode.workspace.getConfiguration('typescript', null).get<boolean>('useBatchedBufferSync', true);
+	}
+
+	private updatePending(filepath: string, f: (pending: Proto.UpdateOpenRequestArgs) => void): void {
+		if (this.supportsBatching && this._pendingFiles.has(filepath)) {
+			this.flush();
+			this._pendingFiles.clear();
+			f(this._pending);
+			this._pendingFiles.add(filepath);
+		} else {
+			f(this._pending);
+		}
+	}
+}
+
+class SyncedBuffer {
+
+	private state = BufferState.Initial;
+
+	constructor(
+		private readonly document: vscode.TextDocument,
+		public readonly filepath: string,
+		private readonly client: ITypeScriptServiceClient,
+		private readonly synchronizer: BufferSynchronizer,
 	) { }
 
 	public open(): void {
@@ -55,7 +172,7 @@ class SyncedBuffer {
 		}
 
 		if (this.client.apiVersion.gte(API.v240)) {
-			const tsPluginsForDocument = this.client.plugins
+			const tsPluginsForDocument = this.client.pluginManager.plugins
 				.filter(x => x.languages.indexOf(this.document.languageId) >= 0);
 
 			if (tsPluginsForDocument.length) {
@@ -63,10 +180,11 @@ class SyncedBuffer {
 			}
 		}
 
-		this.client.execute('open', args, false);
+		this.synchronizer.open(args);
+		this.state = BufferState.Open;
 	}
 
-	public get resource(): Uri {
+	public get resource(): vscode.Uri {
 		return this.document.uri;
 	}
 
@@ -88,27 +206,23 @@ class SyncedBuffer {
 	}
 
 	public close(): void {
-		const args: Proto.FileRequestArgs = {
-			file: this.filepath
-		};
-		this.client.execute('close', args, false);
+		this.synchronizer.close(this.filepath);
+		this.state = BufferState.Closed;
 	}
 
-	public onContentChanged(events: TextDocumentContentChangeEvent[]): void {
-		for (const { range, text } of events) {
-			const args: Proto.ChangeRequestArgs = {
-				insertString: text,
-				...typeConverters.Range.toFormattingRequestArgs(this.filepath, range)
-			};
-			this.client.execute('change', args, false);
+	public onContentChanged(events: readonly vscode.TextDocumentContentChangeEvent[]): void {
+		if (this.state !== BufferState.Open) {
+			console.error(`Unexpected buffer state: ${this.state}`);
 		}
+
+		this.synchronizer.change(this.filepath, events);
 	}
 }
 
 class SyncedBufferMap extends ResourceMap<SyncedBuffer> {
 
 	public getForPath(filePath: string): SyncedBuffer | undefined {
-		return this.get(Uri.file(filePath));
+		return this.get(vscode.Uri.file(filePath));
 	}
 
 	public get allBuffers(): Iterable<SyncedBuffer> {
@@ -117,10 +231,16 @@ class SyncedBufferMap extends ResourceMap<SyncedBuffer> {
 }
 
 class PendingDiagnostics extends ResourceMap<number> {
-	public getFileList(): Set<string> {
-		return new Set(Array.from(this.entries)
-			.sort((a, b) => a[1] - b[1])
-			.map(entry => entry[0]));
+	public getOrderedFileSet(): ResourceMap<void> {
+		const orderedResources = Array.from(this.entries)
+			.sort((a, b) => a.value - b.value)
+			.map(entry => entry.resource);
+
+		const map = new ResourceMap<void>();
+		for (const resource of orderedResources) {
+			map.set(resource, undefined);
+		}
+		return map;
 	}
 }
 
@@ -128,10 +248,10 @@ class GetErrRequest {
 
 	public static executeGetErrRequest(
 		client: ITypeScriptServiceClient,
-		files: string[],
+		files: ResourceMap<void>,
 		onDone: () => void
 	) {
-		const token = new CancellationTokenSource();
+		const token = new vscode.CancellationTokenSource();
 		return new GetErrRequest(client, files, token, onDone);
 	}
 
@@ -139,18 +259,19 @@ class GetErrRequest {
 
 	private constructor(
 		client: ITypeScriptServiceClient,
-		public readonly files: string[],
-		private readonly _token: CancellationTokenSource,
+		public readonly files: ResourceMap<void>,
+		private readonly _token: vscode.CancellationTokenSource,
 		onDone: () => void
 	) {
 		const args: Proto.GeterrRequestArgs = {
 			delay: 0,
-			files
+			files: Array.from(files.entries)
+				.map(entry => client.normalizedPath(entry.resource))
+				.filter(x => !!x) as string[]
 		};
 
 		client.executeAsync('geterr', args, _token.token)
-			.then(undefined, () => { })
-			.then(() => {
+			.finally(() => {
 				if (this._done) {
 					return;
 				}
@@ -168,38 +289,40 @@ class GetErrRequest {
 	}
 }
 
-export default class BufferSyncSupport {
+export default class BufferSyncSupport extends Disposable {
 
 	private readonly client: ITypeScriptServiceClient;
 
 	private _validateJavaScript: boolean = true;
 	private _validateTypeScript: boolean = true;
 	private readonly modeIds: Set<string>;
-	private readonly disposables: Disposable[] = [];
 	private readonly syncedBuffers: SyncedBufferMap;
 	private readonly pendingDiagnostics: PendingDiagnostics;
 	private readonly diagnosticDelayer: Delayer<any>;
 	private pendingGetErr: GetErrRequest | undefined;
 	private listening: boolean = false;
+	private readonly synchronizer: BufferSynchronizer;
 
 	constructor(
 		client: ITypeScriptServiceClient,
 		modeIds: string[]
 	) {
+		super();
 		this.client = client;
 		this.modeIds = new Set<string>(modeIds);
 
 		this.diagnosticDelayer = new Delayer<any>(300);
 
-		const pathNormalizer = (path: Uri) => this.client.normalizedPath(path);
+		const pathNormalizer = (path: vscode.Uri) => this.client.normalizedPath(path);
 		this.syncedBuffers = new SyncedBufferMap(pathNormalizer);
 		this.pendingDiagnostics = new PendingDiagnostics(pathNormalizer);
+		this.synchronizer = new BufferSynchronizer(client);
 
 		this.updateConfiguration();
-		workspace.onDidChangeConfiguration(this.updateConfiguration, this, this.disposables);
+		vscode.workspace.onDidChangeConfiguration(this.updateConfiguration, this, this._disposables);
 	}
 
-	private readonly _onDelete = new EventEmitter<Uri>();
+	private readonly _onDelete = this._register(new vscode.EventEmitter<vscode.Uri>());
 	public readonly onDelete = this._onDelete.event;
 
 	public listen(): void {
@@ -207,22 +330,22 @@ export default class BufferSyncSupport {
 			return;
 		}
 		this.listening = true;
-		workspace.onDidOpenTextDocument(this.openTextDocument, this, this.disposables);
-		workspace.onDidCloseTextDocument(this.onDidCloseTextDocument, this, this.disposables);
-		workspace.onDidChangeTextDocument(this.onDidChangeTextDocument, this, this.disposables);
-		workspace.textDocuments.forEach(this.openTextDocument, this);
+		vscode.workspace.onDidOpenTextDocument(this.openTextDocument, this, this._disposables);
+		vscode.workspace.onDidCloseTextDocument(this.onDidCloseTextDocument, this, this._disposables);
+		vscode.workspace.onDidChangeTextDocument(this.onDidChangeTextDocument, this, this._disposables);
+		vscode.workspace.textDocuments.forEach(this.openTextDocument, this);
 	}
 
-	public handles(resource: Uri): boolean {
+	public handles(resource: vscode.Uri): boolean {
 		return this.syncedBuffers.has(resource);
 	}
 
-	public toResource(filePath: string): Uri {
+	public toResource(filePath: string): vscode.Uri {
 		const buffer = this.syncedBuffers.getForPath(filePath);
 		if (buffer) {
 			return buffer.resource;
 		}
-		return Uri.file(filePath);
+		return vscode.Uri.file(filePath);
 	}
 
 	public reOpenDocuments(): void {
@@ -231,12 +354,7 @@ export default class BufferSyncSupport {
 		}
 	}
 
-	public dispose(): void {
-		disposeAll(this.disposables);
-		this._onDelete.dispose();
-	}
-
-	public openTextDocument(document: TextDocument): void {
+	public openTextDocument(document: vscode.TextDocument): void {
 		if (!this.modeIds.has(document.languageId)) {
 			return;
 		}
@@ -250,30 +368,45 @@ export default class BufferSyncSupport {
 			return;
 		}
 
-		const syncedBuffer = new SyncedBuffer(document, filepath, this.client);
+		const syncedBuffer = new SyncedBuffer(document, filepath, this.client, this.synchronizer);
 		this.syncedBuffers.set(resource, syncedBuffer);
 		syncedBuffer.open();
 		this.requestDiagnostic(syncedBuffer);
 	}
 
-	public closeResource(resource: Uri): void {
+	public closeResource(resource: vscode.Uri): void {
 		const syncedBuffer = this.syncedBuffers.get(resource);
 		if (!syncedBuffer) {
 			return;
 		}
+		this.pendingDiagnostics.delete(resource);
 		this.syncedBuffers.delete(resource);
 		syncedBuffer.close();
-		if (!fs.existsSync(resource.fsPath)) {
-			this._onDelete.fire(resource);
-			this.requestAllDiagnostics();
-		}
+		this._onDelete.fire(resource);
+		this.requestAllDiagnostics();
 	}
 
-	private onDidCloseTextDocument(document: TextDocument): void {
+	public interuptGetErr<R>(f: () => R): R {
+		if (!this.pendingGetErr) {
+			return f();
+		}
+
+		this.pendingGetErr.cancel();
+		this.pendingGetErr = undefined;
+		const result = f();
+		this.triggerDiagnostics();
+		return result;
+	}
+
+	public beforeCommand(command: string): void {
+		this.synchronizer.beforeCommand(command);
+	}
+
+	private onDidCloseTextDocument(document: vscode.TextDocument): void {
 		this.closeResource(document.uri);
 	}
 
-	private onDidChangeTextDocument(e: TextDocumentChangeEvent): void {
+	private onDidChangeTextDocument(e: vscode.TextDocumentChangeEvent): void {
 		const syncedBuffer = this.syncedBuffers.get(e.document.uri);
 		if (!syncedBuffer) {
 			return;
@@ -299,7 +432,7 @@ export default class BufferSyncSupport {
 		this.triggerDiagnostics();
 	}
 
-	public getErr(resources: Uri[]): any {
+	public getErr(resources: vscode.Uri[]): any {
 		const handledResources = resources.filter(resource => this.handles(resource));
 		if (!handledResources.length) {
 			return;
@@ -330,32 +463,28 @@ export default class BufferSyncSupport {
 		return true;
 	}
 
-	public hasPendingDiagnostics(resource: Uri): boolean {
+	public hasPendingDiagnostics(resource: vscode.Uri): boolean {
 		return this.pendingDiagnostics.has(resource);
 	}
 
 	private sendPendingDiagnostics(): void {
-		const fileList = this.pendingDiagnostics.getFileList();
+		const orderedFileSet = this.pendingDiagnostics.getOrderedFileSet();
+
+		if (this.pendingGetErr) {
+			this.pendingGetErr.cancel();
+
+			for (const file of this.pendingGetErr.files.entries) {
+				orderedFileSet.set(file.resource, undefined);
+			}
+		}
 
 		// Add all open TS buffers to the geterr request. They might be visible
 		for (const buffer of this.syncedBuffers.values) {
-			if (!this.pendingDiagnostics.has(buffer.resource)) {
-				fileList.add(buffer.filepath);
-			}
+			orderedFileSet.set(buffer.resource, undefined);
 		}
 
-		if (this.pendingGetErr) {
-			for (const file of this.pendingGetErr.files) {
-				fileList.add(file);
-			}
-		}
-
-		if (fileList.size) {
-			if (this.pendingGetErr) {
-				this.pendingGetErr.cancel();
-			}
-
-			const getErr = this.pendingGetErr = GetErrRequest.executeGetErrRequest(this.client, Array.from(fileList), () => {
+		if (orderedFileSet.size) {
+			const getErr = this.pendingGetErr = GetErrRequest.executeGetErrRequest(this.client, orderedFileSet, () => {
 				if (this.pendingGetErr === getErr) {
 					this.pendingGetErr = undefined;
 				}
@@ -366,8 +495,8 @@ export default class BufferSyncSupport {
 	}
 
 	private updateConfiguration() {
-		const jsConfig = workspace.getConfiguration('javascript', null);
-		const tsConfig = workspace.getConfiguration('typescript', null);
+		const jsConfig = vscode.workspace.getConfiguration('javascript', null);
+		const tsConfig = vscode.workspace.getConfiguration('typescript', null);
 
 		this._validateJavaScript = jsConfig.get<boolean>('validate.enable', true);
 		this._validateTypeScript = tsConfig.get<boolean>('validate.enable', true);
